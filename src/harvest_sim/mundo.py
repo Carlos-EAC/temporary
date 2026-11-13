@@ -28,6 +28,31 @@ class Mundo:
         """
         raise NotImplementedError("Bloque A: Mundo.__init__")
 
+    # --- Registro de agentes (propuesta; confirmar en la reunión del viernes) ---
+    # Los agentes exponen atributos públicos: agent_id, posicion (tuple), estado (Enum),
+    # carga (int), capacidad (int). El Mundo guarda las referencias y las lee/modifica
+    # solo a través de los métodos de abajo.
+    ancho: int
+    alto: int
+    entregado: int       # grano ya depositado en la bodega
+    grano_total: int     # grano total del campo
+
+    def registrar(self, agente) -> None:
+        """Registra un agente (su posición inicial es su base)."""
+        raise NotImplementedError("Carlos: Mundo.registrar")
+
+    def ocupadas(self, excepto: str) -> set[Celda]:
+        """Celdas ocupadas por los demás agentes (para conflictos, §4.2)."""
+        raise NotImplementedError("Carlos: Mundo.ocupadas")
+
+    def bloqueadas_fijas(self, agent_id: str) -> set[Celda]:
+        """Celdas siempre bloqueadas para ese agente (la bodega, si es cosechadora; R9)."""
+        raise NotImplementedError("Carlos: Mundo.bloqueadas_fijas")
+
+    def grano_cosechado(self) -> int:
+        """Grano cosechado acumulado, para verificar la conservación R7."""
+        raise NotImplementedError("Carlos: Mundo.grano_cosechado")
+
     # --- Layout ---------------------------------------------------------
     def base_de(self, agent_id: str) -> Celda:
         raise NotImplementedError("Bloque A: Mundo.base_de")
@@ -69,3 +94,11 @@ class Mundo:
     def depositar(self, agent_id: str) -> int:
         """Entrega la carga del agente a la bodega. Devuelve las unidades depositadas."""
         raise NotImplementedError("Bloque A: Mundo.depositar")
+
+
+def duracion_ticks(cantidad: int, tasa: int) -> int:
+    """Duración de una transferencia o descarga: ceil(cantidad / tasa), mínimo 1 tick (§4.3).
+
+    Función de módulo (no método) porque la usan tanto la cosechadora como el carro.
+    """
+    raise NotImplementedError("Carlos: duracion_ticks")

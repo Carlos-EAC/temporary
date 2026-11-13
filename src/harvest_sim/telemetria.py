@@ -26,6 +26,35 @@ def con_checksum(registro: dict) -> dict:
     return {**registro, "checksum": calcular_checksum(registro)}
 
 
+class TraceBuilder:
+    """Arma el trace.json durante la simulación (la usa simulacion.ejecutar).  [Joel]
+
+    Propuesta de API; confirmar en la reunión del viernes.
+    """
+
+    def __init__(self, config: dict) -> None:
+        raise NotImplementedError("Joel: TraceBuilder.__init__")
+
+    def agregar_tick(self, tick: int, registros: list[dict]) -> None:
+        """Recibe los registros de agente SIN checksum (Agente.registro) y les agrega el checksum."""
+        raise NotImplementedError("Joel: TraceBuilder.agregar_tick")
+
+    def construir(self, mensajes: list[dict], metricas: dict | None = None) -> dict:
+        """Devuelve el dict completo del §6.1 (schema_version, escenario, seed, config,
+        ticks, mensajes, metricas)."""
+        raise NotImplementedError("Joel: TraceBuilder.construir")
+
+
+def cargar_trace(ruta: str | Path) -> dict:
+    """Lee un trace.json."""
+    raise NotImplementedError("Joel: cargar_trace")
+
+
+def verificar_checksums(trace: dict) -> bool:
+    """True si el checksum de cada registro de agente coincide al recalcularlo."""
+    raise NotImplementedError("Joel: verificar_checksums")
+
+
 def escribir_trace(trace: dict, ruta: str | Path) -> None:
     """TODO (Bloque C): escribir trace.json de forma reproducible byte a byte
     (claves en orden estable, mismo formato siempre)."""

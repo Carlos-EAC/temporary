@@ -46,19 +46,24 @@ tests/             una prueba por regla física y por comportamiento
 runs/              salidas de las corridas (no se versionan)
 ```
 
-## Bloques de trabajo
+## Reparto de trabajo
 
-| Bloque | Qué incluye | Archivos |
+Cada archivo tiene un solo dueño. El detalle de tareas, dependencias y cronograma está en [`docs/plan_de_trabajo.md`](docs/plan_de_trabajo.md).
+
+| Persona | Rama | Archivos |
 |---|---|---|
-| **A. Mundo y rutas** | grid, bodega, bases, serpentina, BFS, grano, validación de config | `config.py`, `mundo.py`, `config/*.json`, `tests/test_mundo.py`, `tests/test_config.py` |
-| **B. Agentes y mensajería** | máquinas de estados, buzón FIFO con ids, conflictos de celda, bucle de ticks | `mensajes.py`, `cosechadora.py`, `carro.py`, `simulacion.py`, `tests/test_mensajes.py`, `tests/test_agentes.py` |
-| **C. Telemetría y métricas** | log v1.0, checksum, métricas, gráficas | `telemetria.py`, `viz/plots.py`, `tests/test_telemetria.py` |
-| **D. Visor y calidad** | visor, CLI, tests de integración, este README | `viz/viewer.py`, `cli.py`, `tests/test_integracion.py` |
+| Carlos | `branch-carlos` | `config.py`, `mundo.py`, `simulacion.py` |
+| Oswaldo | `branch-oswaldo` | `rutas.py`, `carro.py`, `tests/test_rutas.py`, `tests/test_carro.py` |
+| Mario | `branch-mario` | `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test_cosechadora.py` |
+| Joel | `branch-joel` | `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/test_telemetria.py` |
+| Emilio | `branch-emilio` | `viz/viewer.py`, `cli.py`, `tests/test_viewer.py` |
+| Ilan | `branch-ilan` | `tests/test_mundo.py`, `tests/test_config.py`, `tests/test_integracion.py`, `.github/`, `scripts/`, `README.md` |
 
-Cada archivo del bloque tiene en su docstring la sección de la especificación que implementa. Los tests pendientes están marcados con `skip`: quita el decorador al implementar cada uno.
+Cada archivo tiene en su docstring la sección de la especificación que implementa. Los tests pendientes están marcados con `skip`: quita el decorador al implementar cada uno.
 
 ## Flujo de trabajo
 
-- Una rama por bloque (`bloque-a-mundo`, `bloque-b-agentes`, …) y pull request hacia `main`.
-- El contrato de interfaces (§10 de la especificación) no se cambia sin avisar al equipo y anotarlo en [`docs/decisiones.md`](docs/decisiones.md).
+- Ramas: `main` (entrega, solo el lunes), `development` (integración) y una rama personal por persona.
+- Todo entra a `development` por pull request con una aprobación y CI en verde; nadie hace push directo.
+- El contrato de interfaces (§3.1 del plan y §10 de la especificación) no se cambia sin avisar al equipo y anotarlo en [`docs/decisiones.md`](docs/decisiones.md).
 - Todo lo no especificado se decide con la opción más simple y se registra en `docs/decisiones.md`.

@@ -1,8 +1,8 @@
-"""Buzón y mensajes.  [Bloque B]"""
+"""Buzón y mensajes.  [Dueño: Mario]"""
 
 import pytest
 
-pendiente = pytest.mark.skip(reason="pendiente — Bloque B")
+pendiente = pytest.mark.skip(reason="pendiente — Mario")
 
 
 @pendiente
@@ -12,7 +12,7 @@ def test_fifo():
 
 @pendiente
 def test_ids_de_mensaje():
-    """Los id son únicos y crecientes (1, 2, 3, ...) y aparecen en el log."""
+    """Los id son únicos y crecientes (1, 2, 3, ...) y aparecen en registro()."""
 
 
 @pendiente
@@ -21,5 +21,5 @@ def test_mensaje_se_lee_al_tick_siguiente():
 
 
 @pendiente
-def test_mensaje_pendiente_no_se_pierde():
-    """Con el carro ocupado, el LLENA espera en la fila y el carro sale al volver a EN_BASE."""
+def test_registro_de_mensajes_para_el_log():
+    """registro() trae id, tipo, emisor, receptor, tick_envio, tick_entrega y payload."""
