@@ -1,0 +1,14 @@
+{
+  "nombre": "escenario_c",
+  "seed": 0,
+  "ancho": 8,
+  "alto": 7,
+  "num_carros": 1,
+  "num_cosechadoras": 1,
+  "grano_por_celda": 1,
+  "capacidad_cosechadora": 5,
+  "capacidad_carro": 10,
+  "tasa_transferencia": 1,
+  "tasa_descarga": 1,
+  "max_ticks": 5000
+}
