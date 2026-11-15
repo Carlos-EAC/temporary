@@ -1,17 +1,21 @@
 """Gráficas y tabla comparativa a partir de trace.json.  [Joel]
 
-Especificación §7.2. Solo lee el log: usa `harvest_sim.telemetria` (reconstruir y calcular_metricas),
-nunca la simulación. Guarda PNG en runs/<escenario>/plots/ y una tabla resumen (CSV y Markdown).
+Solo lee el log: usa `harvest_sim.telemetria` (reconstruir, series_temporales y calcular_metricas),
+nunca la simulación. Guarda PNG en <carpeta del trace>/plots/ y una tabla resumen (CSV y Markdown).
 
 Uso:
     python viz/plots.py runs/escenario_a/trace.json
     python viz/plots.py runs/escenario_a/trace.json runs/escenario_b/trace.json runs/escenario_c/trace.json
 
-Gráficas:
-  1. Carga de la cosechadora vs. tiempo (diente de sierra).
-  2. Línea de tiempo de estados de ambos agentes (tipo Gantt).
-  3. Tiempo ocioso por ciclo.
-  4. Comparación entre escenarios (tiempo ocioso, fin de la cosecha, completación y distancia total).
+Gráficas de cada corrida, agrupadas por la pregunta que responden:
+  1. Carga de la cosechadora en el tiempo (diente de sierra).         ¿Cómo se llena y se vacía?
+  2. Línea de tiempo de estados de ambos agentes (tipo Gantt).        ¿Qué hace cada agente en cada momento?
+  3. Tiempo ocioso acumulado de la cosechadora.                      ¿Cuánto ha esperado hasta ahora?
+  4. Distancia entre la cosechadora y el carro, por tick.             ¿Qué tan lejos está el carro?
+  5. Grano cosechado y grano en la bodega, contra el total esperado.  ¿Cuánto grano llega?
+Y entre escenarios:
+  6. Comparación de las métricas principales.
+  + tabla resumen (resumen.csv con todas las métricas y resumen.md con las principales).
 
 Diseño (guía de visualización): paleta categórica validada con 6 hues en orden fijo, texto en tintas de
 texto (nunca en el color de la serie), marcas delgadas con un hueco del color de la superficie entre
@@ -36,7 +40,7 @@ from matplotlib.ticker import MaxNLocator  # noqa: E402
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "src"))
 
-from harvest_sim.telemetria import calcular_metricas, cargar_trace, reconstruir  # noqa: E402
+from harvest_sim.telemetria import calcular_metricas, cargar_trace, reconstruir, series_temporales  # noqa: E402
 
 # --- Tokens de la paleta de referencia (modo claro) ---------------------------------------------
 SUPERFICIE = "#fcfcfb"
@@ -63,26 +67,32 @@ CATEGORIAS = [
 OTROS = ("otros", "Otros estados", TINTA_TENUE)
 CATEGORIA_DE_ESTADO = {estado: (clave, etiqueta, color) for clave, etiqueta, color, estados in CATEGORIAS for estado in estados}
 
+# Panel de la comparación: (métrica, título del panel). Cada una con su propia escala.
 METRICAS_COMPARACION = [
-    ("tiempo_ocioso_cosechadora", "Tiempo ocioso\n(ticks)"),
-    ("tick_fin_cosecha", "Fin de la cosecha\n(tick)"),
     ("tiempo_completacion", "Tiempo de completación\n(ticks)"),
+    ("tick_fin_cosecha", "Fin de la cosecha\n(tick)"),
+    ("tiempo_ocioso_cosechadora", "Tiempo ocioso\n(ticks)"),
+    ("porcentaje_ocioso", "Tiempo ocioso\n(% del tiempo total)"),
     ("distancia_total", "Distancia total\n(celdas)"),
+    ("distancia_cosechadora_carro_promedio", "Distancia media\ncosechadora–carro (celdas)"),
+    ("utilizacion_carro", "Utilización del carro\n(fracción del tiempo)"),
+    ("porcentaje_entregado", "Grano entregado\n(% del esperado)"),
 ]
-COLUMNAS_TABLA = [
+# Columnas de la tabla en Markdown (el CSV lleva todas las métricas)
+COLUMNAS_MD = [
     ("escenario", "Escenario"),
-    ("tiempo_ocioso_cosechadora", "Tiempo ocioso"),
-    ("tiempo_transfiriendo", "Tiempo transfiriendo"),
-    ("tick_fin_cosecha", "Fin de la cosecha"),
     ("tiempo_completacion", "Tiempo de completación"),
-    ("distancia_cosechadora", "Distancia cosechadora"),
-    ("distancia_carro", "Distancia carro"),
+    ("tick_fin_cosecha", "Fin de la cosecha"),
+    ("tiempo_ocioso_cosechadora", "Tiempo ocioso"),
+    ("porcentaje_ocioso", "% ocioso"),
     ("distancia_total", "Distancia total"),
+    ("distancia_cosechadora_carro_promedio", "Distancia media cosechadora–carro"),
+    ("utilizacion_carro", "Utilización del carro"),
     ("colisiones", "Colisiones"),
     ("ticks_bloqueados", "Ticks bloqueados"),
     ("num_ciclos", "Ciclos"),
-    ("utilizacion_carro", "Utilización del carro"),
     ("grano_total_entregado", "Grano entregado"),
+    ("porcentaje_entregado", "% entregado"),
 ]
 
 
@@ -132,6 +142,10 @@ def _categoria(estado):
 
 def _color_texto(color):
     return TINTA if color in (AMARILLO, EJE) else "#ffffff"
+
+
+def _formato(valor):
+    return "—" if valor is None else f"{valor:g}"
 
 
 # --- 1. Carga de la cosechadora vs. tiempo ------------------------------------------------------
@@ -187,32 +201,77 @@ def grafica_estados(trace, destino, ruta=None):
     return _guardar(fig, destino)
 
 
-# --- 3. Tiempo ocioso por ciclo -----------------------------------------------------------------
-def grafica_espera(trace, destino, ruta=None):
+# --- 3. Tiempo ocioso acumulado -----------------------------------------------------------------
+def grafica_ocioso_acumulado(trace, destino, ruta=None):
+    """Curva continua: plana mientras la cosechadora trabaja y con pendiente 1 mientras espera al carro.
+    Cada punto marca el fin de una espera y su valor es el total acumulado hasta ese momento."""
     _estilo()
-    metricas = calcular_metricas(trace)
-    esperas = metricas["espera_por_ciclo"]
-    fig, ax = plt.subplots(figsize=(7, 4.2))
-    ax.grid(axis="x", visible=False)
-    if esperas:
-        etiquetas = [f"Ciclo {i}" for i in range(1, len(esperas) + 1)]
-        barras = ax.bar(etiquetas, esperas, width=0.5, color=NARANJA, edgecolor=SUPERFICIE, linewidth=1.5)
-        for barra, valor in zip(barras, esperas):
-            ax.text(barra.get_x() + barra.get_width() / 2, valor, str(valor), ha="center", va="bottom",
-                    color=TINTA_2, fontsize=9)
-        ax.set_ylim(0, max(esperas) * 1.15)
-    else:
-        ax.text(0.5, 0.5, "La cosechadora no esperó al carro", ha="center", va="center",
-                transform=ax.transAxes, color=TINTA_2)
-    ax.set_title(f"Tiempo ocioso por ciclo — {nombre_escenario(trace, ruta)}")
-    ax.set_ylabel("Ticks esperando al carro")
+    s = series_temporales(trace)
+    ticks, acumulado = s["tick"], s["ocioso_acumulado"]
+    fig, ax = plt.subplots(figsize=(10, 4.2))
+    ax.plot(ticks, acumulado, color=NARANJA, linewidth=2, solid_capstyle="round", solid_joinstyle="round", zorder=3)
+    finales = [t for t in ticks if t > 0 and acumulado[t] > acumulado[t - 1]
+               and (t == ticks[-1] or acumulado[t + 1] == acumulado[t])]
+    ax.plot(finales, [acumulado[t] for t in finales], linestyle="none", marker="o", markersize=8,
+            color=NARANJA, markeredgecolor=SUPERFICIE, markeredgewidth=2, zorder=4)
+    for t in finales:
+        ax.annotate(str(acumulado[t]), (t, acumulado[t]), xytext=(0, 9), textcoords="offset points",
+                    ha="center", color=TINTA_2, fontsize=9)
+    ax.set_title(f"Tiempo ocioso acumulado de la cosechadora — {nombre_escenario(trace, ruta)}")
+    ax.set_xlabel("Tick")
+    ax.set_ylabel("Ticks acumulados esperando al carro")
+    ax.set_xlim(0, ticks[-1])
+    ax.set_ylim(0, max(acumulado + [1]) * 1.18)
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-    ax.text(0, -0.2, f"Total ocioso: {metricas['tiempo_ocioso_cosechadora']} ticks", transform=ax.transAxes,
-            color=TINTA_2, fontsize=9)
     return _guardar(fig, destino)
 
 
-# --- 4. Comparación entre escenarios ------------------------------------------------------------
+# --- 4. Distancia entre la cosechadora y el carro, por tick --------------------------------------
+def grafica_distancia(trace, destino, ruta=None):
+    _estilo()
+    s = series_temporales(trace)
+    ticks, distancia = s["tick"], s["distancia_cosechadora_carro"]
+    promedio = sum(distancia) / len(distancia)
+    fig, ax = plt.subplots(figsize=(10, 4.2))
+    ax.axhline(promedio, color=TINTA_TENUE, linewidth=1, zorder=1)
+    ax.text(0.99, 0.96, f"línea gris: promedio ({promedio:.1f} celdas)", transform=ax.transAxes, ha="right",
+            va="top", color=TINTA_2, fontsize=9)
+    ax.step(ticks, distancia, where="post", color=AZUL, linewidth=2, solid_capstyle="round", solid_joinstyle="round", zorder=3)
+    ax.set_title(f"Distancia entre la cosechadora y el carro — {nombre_escenario(trace, ruta)}")
+    ax.set_xlabel("Tick")
+    ax.set_ylabel("Distancia (celdas, Manhattan)")
+    ax.set_xlim(0, ticks[-1])
+    ax.set_ylim(0, max(distancia + [1]) * 1.15)
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    return _guardar(fig, destino)
+
+
+# --- 5. Grano cosechado y grano en la bodega -----------------------------------------------------
+def grafica_grano(trace, destino, ruta=None):
+    _estilo()
+    s = series_temporales(trace)
+    ticks = s["tick"]
+    mundo = trace["mundo"]
+    esperado = mundo["ancho"] * (mundo["alto"] - 1) * mundo.get("grano_por_celda", 1) if "ancho" in mundo else None
+    fig, ax = plt.subplots(figsize=(10, 4.2))
+    if esperado:
+        ax.axhline(esperado, color=TINTA_TENUE, linewidth=1, zorder=1)
+        ax.text(ticks[-1], esperado, f"total esperado ({esperado})", ha="right", va="bottom", color=TINTA_2, fontsize=9)
+    ax.step(ticks, s["cosechado_acumulado"], where="post", color=AQUA, linewidth=2, solid_capstyle="round", zorder=3,
+            label="Cosechado acumulado")
+    ax.step(ticks, s["entregado_en_bodega"], where="post", color=AZUL, linewidth=2, solid_capstyle="round", zorder=4,
+            label="En la bodega")
+    ax.set_title(f"Grano cosechado y grano en la bodega — {nombre_escenario(trace, ruta)}")
+    ax.set_xlabel("Tick")
+    ax.set_ylabel("Unidades de grano")
+    ax.set_xlim(0, ticks[-1])
+    ax.set_ylim(0, (esperado or max(s["cosechado_acumulado"] + [1])) * 1.15)
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.legend(loc="upper left", bbox_to_anchor=(0.0, 0.86))  # debajo de la línea del total esperado
+    return _guardar(fig, destino)
+
+
+# --- 6. Comparación entre escenarios ------------------------------------------------------------
 def grafica_comparacion(traces, destino):
     """`traces`: {nombre: trace}. Un panel por métrica (cada una con su propia escala) y un color fijo por escenario."""
     if len(traces) > len(SERIES):
@@ -220,13 +279,15 @@ def grafica_comparacion(traces, destino):
     _estilo()
     metricas = {nombre: calcular_metricas(t) for nombre, t in traces.items()}
     nombres = list(traces)
-    fig, ejes = plt.subplots(1, len(METRICAS_COMPARACION), figsize=(13, 4.6))
-    for ax, (clave, titulo) in zip(ejes, METRICAS_COMPARACION):
+    columnas = 4
+    filas = -(-len(METRICAS_COMPARACION) // columnas)
+    fig, ejes = plt.subplots(filas, columnas, figsize=(13, 4.0 * filas))
+    for ax, (clave, titulo) in zip(ejes.flat, METRICAS_COMPARACION):
         valores = [metricas[n][clave] or 0 for n in nombres]
         barras = ax.bar(range(len(nombres)), valores, width=0.55, color=SERIES[:len(nombres)],
                         edgecolor=SUPERFICIE, linewidth=1.5)
         for barra, valor in zip(barras, valores):
-            ax.text(barra.get_x() + barra.get_width() / 2, valor, str(valor), ha="center", va="bottom",
+            ax.text(barra.get_x() + barra.get_width() / 2, valor, _formato(valor), ha="center", va="bottom",
                     color=TINTA_2, fontsize=9)
         ax.set_title(titulo, fontsize=10)
         ax.set_xticks(range(len(nombres)))
@@ -235,54 +296,73 @@ def grafica_comparacion(traces, destino):
         ax.grid(axis="x", visible=False)
         ax.set_xlim(-0.7, max(len(nombres), 3) - 1 + 0.7)
         ax.set_ylim(0, max(valores + [1]) * 1.18)
-        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    for ax in list(ejes.flat)[len(METRICAS_COMPARACION):]:
+        ax.set_visible(False)
     if len(nombres) > 1:
         asas = [Patch(facecolor=SERIES[i], edgecolor=SUPERFICIE, label=n) for i, n in enumerate(nombres)]
         fig.legend(handles=asas, loc="lower center", ncol=len(asas))
     fig.suptitle("Comparación entre escenarios (línea base)", x=0.01, ha="left", fontweight="bold")
-    fig.tight_layout(rect=(0, 0.08 if len(nombres) > 1 else 0, 1, 0.95))
+    fig.tight_layout(rect=(0, 0.05 if len(nombres) > 1 else 0, 1, 0.96))
     return _guardar(fig, destino)
 
 
 # --- Tabla resumen ------------------------------------------------------------------------------
-def _fila(nombre, trace):
-    m = calcular_metricas(trace)
-    return {"escenario": nombre, **{k: m[k] for k, _ in COLUMNAS_TABLA[1:]}, "ticks_bloqueados": sum(m["ticks_bloqueados"].values())}
+def _aplanar(valor, prefijo=""):
+    """Convierte las métricas anidadas en columnas planas: {'a': {'b': 1}} -> {'a.b': 1}; las listas se unen con ';'."""
+    if isinstance(valor, dict):
+        plano = {}
+        for k, v in valor.items():
+            plano.update(_aplanar(v, f"{prefijo}.{k}" if prefijo else k))
+        return plano
+    if isinstance(valor, list):
+        return {prefijo: ";".join(str(v) for v in valor)}
+    return {prefijo: valor}
 
 
 def tabla_resumen(traces, destino_csv, destino_md):
-    """Una fila por escenario y una columna por métrica (CSV y Markdown)."""
-    filas = [_fila(nombre, t) for nombre, t in traces.items()]
+    """Una fila por escenario. El CSV lleva TODAS las métricas (anidadas aplanadas con '.'); el Markdown, las principales."""
+    metricas = {nombre: calcular_metricas(t) for nombre, t in traces.items()}
     destino_csv, destino_md = Path(destino_csv), Path(destino_md)
     destino_csv.parent.mkdir(parents=True, exist_ok=True)
-    claves = [k for k, _ in COLUMNAS_TABLA]
+
+    filas = {nombre: {"escenario": nombre, **_aplanar(m)} for nombre, m in metricas.items()}
+    columnas = []
+    for fila in filas.values():
+        columnas += [c for c in fila if c not in columnas]  # unión, en orden de aparición
     with open(destino_csv, "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, lineterminator="\n")
-        w.writerow(claves)
-        for fila in filas:
-            w.writerow(["" if fila[k] is None else fila[k] for k in claves])
-    lineas = ["| " + " | ".join(t for _, t in COLUMNAS_TABLA) + " |", "|" + "---|" * len(COLUMNAS_TABLA)]
-    for fila in filas:
-        lineas.append("| " + " | ".join("—" if fila[k] is None else str(fila[k]) for k in claves) + " |")
+        w.writerow(columnas)
+        for fila in filas.values():
+            w.writerow(["" if fila.get(c) is None else fila.get(c, "") for c in columnas])
+
+    def valor_md(nombre, clave):
+        v = metricas[nombre].get(clave) if clave != "escenario" else nombre
+        return str(sum(v.values())) if isinstance(v, dict) else _formato(v) if not isinstance(v, str) else v
+
+    lineas = ["| " + " | ".join(t for _, t in COLUMNAS_MD) + " |", "|" + "---|" * len(COLUMNAS_MD)]
+    for nombre in metricas:
+        lineas.append("| " + " | ".join(valor_md(nombre, k) for k, _ in COLUMNAS_MD) + " |")
     destino_md.write_text("\n".join(lineas) + "\n", encoding="utf-8")
     return destino_csv, destino_md
 
 
 # --- Orquestación -------------------------------------------------------------------------------
 def graficas_de_un_trace(ruta_trace, carpeta=None):
-    """Las gráficas 1 a 3 de un trace.json. Devuelve las rutas generadas."""
+    """Las gráficas 1 a 5 de un trace.json. Devuelve las rutas generadas."""
     trace = cargar_trace(ruta_trace)
     carpeta = Path(carpeta) if carpeta else Path(ruta_trace).resolve().parent / "plots"
     return [
         grafica_carga(trace, carpeta / "1_carga_cosechadora.png", ruta_trace),
         grafica_estados(trace, carpeta / "2_linea_de_tiempo_estados.png", ruta_trace),
-        grafica_espera(trace, carpeta / "3_ocio_por_ciclo.png", ruta_trace),
+        grafica_ocioso_acumulado(trace, carpeta / "3_ocioso_acumulado.png", ruta_trace),
+        grafica_distancia(trace, carpeta / "4_distancia_cosechadora_carro.png", ruta_trace),
+        grafica_grano(trace, carpeta / "5_grano_en_bodega.png", ruta_trace),
     ]
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Genera las gráficas y la tabla resumen a partir de trace.json.")
-    parser.add_argument("trace", nargs="+", help="uno o más trace.json (la gráfica 4 y la tabla comparan varios)")
+    parser.add_argument("trace", nargs="+", help="uno o más trace.json (la gráfica 6 y la tabla comparan varios)")
     parser.add_argument("--salida", help="carpeta de salida (por defecto, junto a cada trace y en <runs>/comparacion)")
     args = parser.parse_args(argv)
 
@@ -297,7 +377,7 @@ def main(argv=None):
         comparacion = Path(args.salida) / "comparacion"
     else:
         comparacion = Path(args.trace[0]).resolve().parent.parent / "comparacion"
-    generados.append(grafica_comparacion(traces, comparacion / "4_comparacion_escenarios.png"))
+    generados.append(grafica_comparacion(traces, comparacion / "6_comparacion_escenarios.png"))
     generados += tabla_resumen(traces, comparacion / "resumen.csv", comparacion / "resumen.md")
     for g in generados:
         print(g)

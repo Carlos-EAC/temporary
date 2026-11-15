@@ -39,10 +39,11 @@ def con_nombre(trace, nombre):
     return otro
 
 
-def test_las_tres_graficas_de_un_trace_se_generan(plots, tmp_path):
+def test_las_cinco_graficas_de_un_trace_se_generan(plots, tmp_path):
     rutas = plots.graficas_de_un_trace(FIXTURE, tmp_path)
     assert [r.name for r in rutas] == [
-        "1_carga_cosechadora.png", "2_linea_de_tiempo_estados.png", "3_ocio_por_ciclo.png",
+        "1_carga_cosechadora.png", "2_linea_de_tiempo_estados.png", "3_ocioso_acumulado.png",
+        "4_distancia_cosechadora_carro.png", "5_grano_en_bodega.png",
     ]
     assert all(es_png(r) for r in rutas)
 
@@ -58,17 +59,22 @@ def test_comparacion_y_tabla_resumen(plots, tmp_path):
     with open(ruta_csv, encoding="utf-8", newline="") as f:
         filas = list(csv.DictReader(f))
     assert [f["escenario"] for f in filas] == ["escenario_a", "escenario_b"]
-    # valores calculados a mano sobre el fixture
-    fila = filas[0]
-    assert (fila["tiempo_ocioso_cosechadora"], fila["tick_fin_cosecha"], fila["tiempo_completacion"]) == ("23", "44", "49")
-    assert (fila["distancia_total"], fila["ticks_bloqueados"], fila["num_ciclos"]) == ("32", "2", "3")
-    assert (fila["utilizacion_carro"], fila["grano_total_entregado"], fila["colisiones"]) == ("0.8", "8", "0")
-    assert filas[1]["ticks_bloqueados"] == "3"  # suma de los bloqueos de todos los agentes
+    # el CSV lleva TODAS las métricas; valores calculados a mano sobre el fixture
+    a = filas[0]
+    assert (a["tiempo_ocioso_cosechadora"], a["tick_fin_cosecha"], a["tiempo_completacion"]) == ("23", "44", "49")
+    assert (a["distancia_total"], a["num_ciclos"], a["espera_por_ciclo"]) == ("32", "3", "5;8;10")
+    assert (a["utilizacion_carro"], a["grano_total_entregado"], a["colisiones"]) == ("0.8", "8", "0")
+    assert (a["porcentaje_ocioso"], a["porcentaje_entregado"], a["grano_esperado_total"]) == ("46.0", "100.0", "8")
+    assert (a["ticks_por_estado.cosechadora_1.LLENA_ESPERANDO"], a["ticks_por_estado.carro_1.EN_BASE"]) == ("23", "10")
+    assert (a["mensajes_enviados.LLENA"], a["mensajes_enviados.TRANSFERENCIA_TERMINADA"]) == ("3", "3")
+    assert (a["ticks_bloqueados.cosechadora_1"], a["ticks_bloqueados.carro_1"]) == ("2", "0")
+    assert filas[1]["ticks_bloqueados.carro_1"] == "1"  # el bloqueo agregado a B
 
     lineas = Path(ruta_md).read_text(encoding="utf-8").splitlines()
     assert len(lineas) == 2 + 2  # encabezado, separador y una fila por escenario
-    assert lineas[0].startswith("| Escenario | Tiempo ocioso |")
-    assert lineas[2].startswith("| escenario_a | 23 | 8 | 44 | 49 |")
+    assert lineas[0].startswith("| Escenario | Tiempo de completación | Fin de la cosecha |")
+    assert lineas[2] == "| escenario_a | 49 | 44 | 23 | 46 | 32 | 1.9 | 0.8 | 0 | 2 | 3 | 8 | 100 |"
+    assert " | 3 | 3 | 8 | 100 |" in lineas[3]  # B: 3 bloqueos en total (suma de ambos agentes)
 
 
 def test_todos_los_estados_tienen_categoria_y_color_validado(plots):
@@ -93,8 +99,8 @@ def test_la_comparacion_tiene_limite_de_escenarios(plots, tmp_path):
         plots.grafica_comparacion(demasiados, tmp_path / "x.png")
 
 
-def test_sin_esperas_se_dibuja_un_aviso(plots, tmp_path):
-    """Un trace en el que la cosechadora nunca espera genera la gráfica 3 sin fallar."""
+def test_sin_esperas_las_graficas_no_fallan(plots, tmp_path):
+    """Un trace en el que la cosechadora nunca espera (y sin tamaño de mapa) genera las gráficas sin fallar."""
     agentes = [{"id": "cosechadora_1", "tipo": "cosechadora", "capacidad": 3, "base": [2, 0]},
                {"id": "carro_1", "tipo": "carro", "capacidad": 6, "base": [1, 0]}]
     b = TraceBuilder({"nombre": "sin_esperas"}, {}, agentes)
@@ -103,7 +109,10 @@ def test_sin_esperas_se_dibuja_un_aviso(plots, tmp_path):
                  "pose": {"x": a["base"][0], "y": 0, "orientacion": "S"}, "estado": "EN_BASE",
                  "carga": {"actual": 0, "capacidad": a["capacidad"]}} for a in agentes]
         b.agregar_tick(t, regs, [])
-    assert es_png(plots.grafica_espera(b.construir(), tmp_path / "espera.png"))
+    trace = b.construir()
+    assert es_png(plots.grafica_ocioso_acumulado(trace, tmp_path / "ocioso.png"))
+    assert es_png(plots.grafica_distancia(trace, tmp_path / "distancia.png"))
+    assert es_png(plots.grafica_grano(trace, tmp_path / "grano.png"))
 
 
 def test_main_genera_graficas_comparacion_y_tabla(plots, tmp_path, capsys):
@@ -117,6 +126,6 @@ def test_main_genera_graficas_comparacion_y_tabla(plots, tmp_path, capsys):
     salida = tmp_path / "salida"
     for nombre in ("escenario_a", "escenario_b"):
         assert es_png(salida / nombre / "2_linea_de_tiempo_estados.png")
-    assert es_png(salida / "comparacion" / "4_comparacion_escenarios.png")
+    assert es_png(salida / "comparacion" / "6_comparacion_escenarios.png")
     assert (salida / "comparacion" / "resumen.csv").exists() and (salida / "comparacion" / "resumen.md").exists()
     assert str(salida / "comparacion" / "resumen.md") in capsys.readouterr().out
