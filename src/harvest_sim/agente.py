@@ -16,6 +16,6 @@ class Agente(Protocol):
         ...
 
     def registro(self, tick: int) -> dict:
-        """Registro completo del agente (§6.1: pose, estado, carga, intencion, objetivo), sin checksum.
-        `intencion.celdas` = próximas celdas de la ruta, recalculadas en cada tick."""
+        """Registro completo del agente (§6.1): tick, agent_id, tipo, pose, estado y carga
+        {actual, capacidad}, sin checksum. No incluye rutas ni intenciones."""
         ...

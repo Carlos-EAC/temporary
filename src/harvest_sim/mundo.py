@@ -53,6 +53,11 @@ class Mundo:
         """Grano cosechado acumulado, para verificar la conservación R7."""
         raise NotImplementedError("Carlos: Mundo.grano_cosechado")
 
+    def registrar_bloqueo(self, agent_id: str) -> None:
+        """El agente esperó este tick porque su siguiente celda estaba ocupada (§4.2).
+        Genera un evento BLOQUEO. Lo llama el agente (carro o cosechadora)."""
+        raise NotImplementedError("Carlos: Mundo.registrar_bloqueo")
+
     # --- Descripción y eventos para el log (§6.1) -----------------------------
     def descripcion(self) -> dict:
         """Parte estática para trace["mundo"]: ancho, alto, bodega, bases
@@ -64,6 +69,7 @@ class Mundo:
         `cosechar` y `depositar` los generan al ocurrir:
           {"tipo": "CELDA_COSECHADA", "celda": [x, y], "agente": id}
           {"tipo": "DEPOSITO", "agente": id, "cantidad": n, "entregado_total": total}
+          {"tipo": "BLOQUEO", "agente": id}
         simulacion.py los pasa a TraceBuilder.agregar_tick en cada tick."""
         raise NotImplementedError("Carlos: Mundo.drenar_eventos")
 

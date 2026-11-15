@@ -57,6 +57,7 @@ mundo.ruta_bfs(origen, destino, bloqueadas) -> list[Celda] | None   # delega en 
 mundo.cosechar(agent_id, celda) -> int        # suma a agente.carga; R8
 mundo.transferir(de, a, cantidad) -> int      # δ (R6); lanza ValueError si no son vecinos (R5)
 mundo.depositar(agent_id) -> int              # carga del carro -> entregado
+mundo.registrar_bloqueo(agent_id)             # el agente esperó por una celda ocupada (genera un evento BLOQUEO)
 mundo.grano_cosechado() -> int
 mundo.descripcion() -> dict                   # ancho, alto, bodega, bases, grano_por_celda (va en trace["mundo"])
 mundo.drenar_eventos() -> list[dict]          # CELDA_COSECHADA y DEPOSITO ocurridos desde la última llamada
@@ -96,24 +97,12 @@ ejecutar(config) -> dict                      # devuelve el trace completo, con 
 {"tick": 12, "agent_id": "carro_1", "tipo": "carro",
  "pose": {"x": 3, "y": 2, "orientacion": "S"},
  "estado": "YENDO_A_COSECHADORA",
- "carga": {"actual": 0, "capacidad": 20},
- "intencion": {"accion": "MOVER", "celdas": [[3, 3], [4, 3]]},   # listas, no tuplas; celdas = próximas celdas, recalculadas en cada tick
- "objetivo": "cosechadora_1"}                                       # id | "bodega" | "base" | None
+ "carga": {"actual": 0, "capacidad": 20}}   # sin rutas ni intenciones: el log solo guarda cambios explícitos (§6.1)
 ```
 
-### 3.3 Vocabulario de `intencion.accion`
+### 3.3 Qué no se registra
 
-Joel calcula métricas leyendo estos valores, así que todos deben usar exactamente estos nombres:
-
-| Valor | Cuándo |
-|---|---|
-| `MOVER` | El agente se mueve este tick |
-| `COSECHAR` | La cosechadora cosecha una celda |
-| `ESPERAR` | Espera por una causa normal (`LLENA_ESPERANDO`, `ESPERANDO_TRANSFERENCIA`) |
-| `ESPERAR_BLOQUEO` | Espera porque la siguiente celda está ocupada (§4.2). Alimenta `ticks_bloqueados` |
-| `TRANSFERIR` | Estado `TRANSFIRIENDO` |
-| `DESCARGAR` | Estado `DESCARGANDO` |
-| `NINGUNA` | `EN_BASE` sin trabajo, o `FIN` |
+Rutas, intenciones y objetivos de los agentes **no van en el log**: dependen del algoritmo y obligarían al visor a interpretarlos (decisión del 2026-11-15 en `docs/decisiones.md`). Solo se registran cambios explícitos. Un bloqueo (el agente quiso avanzar y la celda estaba ocupada) se avisa con `mundo.registrar_bloqueo(agent_id)`, que genera el evento `BLOQUEO`; con eso Joel calcula `ticks_bloqueados`.
 
 ### 3.4 Acuerdos de trabajo
 
@@ -138,7 +127,7 @@ Archivos: `config.py`, `mundo.py`, `simulacion.py`.
    *Listo cuando:* `test_casillas_de_inicio` pasa. Súbelo a `development` cuanto antes: Emilio y Oswaldo lo necesitan.
 3. ⚡ **Serpentina** y `duracion_ticks`.
    *Listo cuando:* `test_serpentina_cubre_todo_el_campo` y `test_duracion_ticks` pasan.
-4. **Grano y eventos.** `cosechar` (R8), `transferir` (R5 y R6), `depositar`, `grano_cosechado`, `grano_total`, `entregado`. `cosechar` y `depositar` además **generan un evento** (`CELDA_COSECHADA` / `DEPOSITO` con `entregado_total`) que `drenar_eventos()` devuelve y vacía, y agregas `descripcion()` (§6.1 de la especificación).
+4. **Grano y eventos.** `cosechar` (R8), `transferir` (R5 y R6), `depositar`, `grano_cosechado`, `grano_total`, `entregado`. `cosechar` y `depositar` además **generan un evento** (`CELDA_COSECHADA` / `DEPOSITO` con `entregado_total`) que `drenar_eventos()` devuelve y vacía, y agregas `descripcion()` y `registrar_bloqueo(agent_id)` (genera el evento `BLOQUEO`) (§6.1 de la especificación).
    *Listo cuando:* los tests de R5, R6, R8, de depósito y `test_cosechar_genera_evento` pasan.
 5. **Delegar rutas.** `Mundo.vecinos` y `Mundo.ruta_bfs` llaman a `rutas.py` de Oswaldo.
 6. **`simulacion.ejecutar`.** Crea mundo, buzón y agentes; ejecuta el bucle del §4.1 (entregar, cosechadora, carro, snapshot, término); en cada tick junta los registros de los agentes y los eventos (`buzon.drenar_eventos()` + `mundo.drenar_eventos()`) y se los pasa a `builder.agregar_tick`; imprime por consola los cambios de estado y los depósitos (§6.3 de la especificación); al terminar llama `calcular_metricas` y `builder.construir`. Usa `max_ticks` como tope.
@@ -155,7 +144,7 @@ Archivos: `rutas.py`, `carro.py`, `tests/test_rutas.py`, `tests/test_carro.py`.
 2. **Fakes para tus pruebas.** Un `Mundo` falso y un `Buzon` falso mínimos dentro de `test_carro.py`. Así avanzas sin esperar a Carlos ni a Emilio.
 3. **`carro.py`.** La tabla de estados del §5.2 completa: `EN_BASE` revisa su fila solo ahí; BFS con celdas ocupadas bloqueadas; celda objetivo según `elegir_celda_objetivo`; lectura de `cantidad` al recibir `TRANSFERENCIA_TERMINADA`; descarga con `duracion_ticks`.
    *Listo cuando:* `tests/test_carro.py` pasa con los fakes.
-4. **`registro()` del carro** con `intencion.accion` del vocabulario del §3.3 e `intencion.celdas` = próximas celdas, recalculadas en cada tick.
+4. **`registro()` del carro** (pose, estado, carga; §3.2) y, si queda esperando por una celda ocupada, `mundo.registrar_bloqueo(...)`.
 5. **Cambiar los fakes por los reales** cuando lleguen `mundo.py` y `mensajes.py` a `development`, y ajustar lo que haga falta.
 
 **Respaldo:** Carlos.
@@ -167,9 +156,9 @@ Archivos: `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test
 1. ⚡ **`Buzon`.** Fila FIFO por agente, `id` entero creciente, entrega en `tick+1`, `drenar_eventos()` para el log, y un registro por `logging` de cada envío y cada entrega (formato del §6.3 de la especificación).
    *Listo cuando:* `tests/test_mensajes.py` pasa (incluido `test_log_de_consola_de_mensajes`). Es lo primero que haces: Oswaldo, Carlos y Joel lo necesitan.
 2. **Fakes para tus pruebas.** Un `Mundo` falso mínimo en `test_cosechadora.py`.
-3. **`cosechadora.py`.** La tabla de estados del §5.1: viaje al campo (con `siguiente_paso` de Oswaldo), cosecha, evaluación de carga (llena o parcial final), espera del carro en `ESPERANDO_TRANSFERENCIA`, transferencia con `duracion_ticks` y `cantidad`, regreso a base y `FIN`. Si la siguiente celda de la serpentina está ocupada, espera con `ESPERAR_BLOQUEO`.
+3. **`cosechadora.py`.** La tabla de estados del §5.1: viaje al campo (con `siguiente_paso` de Oswaldo), cosecha, evaluación de carga (llena o parcial final), espera del carro en `ESPERANDO_TRANSFERENCIA`, transferencia con `duracion_ticks` y `cantidad`, regreso a base y `FIN`. Si la siguiente celda de la serpentina está ocupada, espera y llama a `mundo.registrar_bloqueo(...)`.
    *Listo cuando:* `tests/test_cosechadora.py` pasa con los fakes.
-4. **`registro()` de la cosechadora**, con `intencion.celdas` = próximas celdas, recalculadas en cada tick.
+4. **`registro()` de la cosechadora** (pose, estado, carga; §3.2).
 5. **Cambiar los fakes por los reales** cuando lleguen `mundo.py` y `rutas.py`.
 
 **Respaldo:** Oswaldo.
@@ -178,13 +167,15 @@ Archivos: `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test
 
 Archivos: `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/test_telemetria.py`.
 
-1. ⚡ **Telemetría (formato v2.0, §6.1 de la especificación).** `TraceBuilder` (recibe en cada tick los registros completos de los agentes y los eventos; calcula los `AGENTE` por diferencia con el tick anterior, ordena por categoría, omite los ticks sin cambios y agrega el checksum por tick), `escribir_trace` (byte a byte reproducible), `cargar_trace`, `verificar_checksums` y `reconstruir`. Carlos usa `TraceBuilder` en `simulacion.py`; las métricas, las gráficas y los tests usan `reconstruir`.
+**Tu parte:** ser el dueño del registro de la simulación (el `trace.json`) y convertirlo en números y gráficas. Las tareas van en orden; las ⚡ destraban a otras personas.
+
+1. ⚡ **Trace (telemetría, formato v2.0).** *Entrada:* en cada tick, los registros completos de los agentes (pose, estado, carga) y los eventos del mundo y del buzón. *Salida:* el `trace.json` del §6.1 de la especificación. Incluye `TraceBuilder` (calcula los `AGENTE` por diferencia con el tick anterior, ordena por categoría, omite los ticks sin cambios y agrega el checksum por tick), `escribir_trace` (byte a byte reproducible), `cargar_trace`, `verificar_checksums` y `reconstruir`. *Desbloquea a:* Carlos (`simulacion.py`), Giovanni (visor), Ilan (tests) y tus tareas 2 a 4. Esta tarea tiene su propio plan de implementación.
    *Listo cuando:* `tests/test_telemetria.py` pasa.
-2. ⚡ **Fixture de ejemplo.** Un script `tools/generar_trace_ejemplo.py` que, con un guion determinista (sin aleatoriedad) y el propio `TraceBuilder`, genere `tests/fixtures/trace_ejemplo.json`: unos 60 ticks inventados pero coherentes con la especificación (los dos agentes en sus bases, un ciclo completo con espera y carga parcial, mensajes con `id`, depósito). Se versionan el script y el JSON. Con esto Giovanni dibuja el visor sin esperar la simulación, y tú desarrollas gráficas y métricas.
+2. ⚡ **Fixture de ejemplo.** Un script `tools/generar_trace_ejemplo.py` que, con un guion determinista (sin aleatoriedad) y el propio `TraceBuilder`, genere `tests/fixtures/trace_ejemplo.json`: unos 60 ticks inventados pero coherentes con la especificación (ambos agentes en sus bases, un ciclo completo con espera y carga parcial, un bloqueo, mensajes con `id`, depósito). Se versionan el script y el JSON. *Desbloquea a:* Giovanni (dibuja el visor sin esperar la simulación) y a tus tareas 3 y 4.
    *Listo cuando:* `verificar_checksums` es `True` sobre el fixture y Giovanni lo puede abrir.
-3. **`calcular_metricas(trace)`** del §6.2, **solo desde el log**. Sugerencias de cálculo:
-   - `tiempo_ocioso_cosechadora`: snapshots con estado `LLENA_ESPERANDO`.
-   - `ticks_bloqueados`: snapshots con `intencion.accion == "ESPERAR_BLOQUEO"`, por agente.
+3. **Métricas.** `calcular_metricas(trace)` del §6.2, **solo desde el log** (usando `reconstruir`). Sugerencias de cálculo:
+   - `tiempo_ocioso_cosechadora`: ticks con estado `LLENA_ESPERANDO`.
+   - `ticks_bloqueados`: eventos `BLOQUEO`, por agente.
    - `distancia_*`: ticks en que la pose cambió respecto al tick anterior.
    - `colisiones`: ticks con la misma celda o con intercambio de posiciones.
    - `num_ciclos` y `espera_por_ciclo`: a partir de los mensajes `LLENA` y de los tramos de `LLENA_ESPERANDO`.
@@ -192,8 +183,9 @@ Archivos: `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/t
    - `grano_total_entregado`: suma de `cantidad` de los eventos `DEPOSITO`.
    - `utilizacion_carro`: fracción de ticks con el carro fuera de `EN_BASE`.
    Cualquier definición que elijas se anota en `docs/decisiones.md`. Pruébalo sobre el fixture, con valores que puedas calcular a mano.
-4. **`viz/plots.py`**: las cuatro gráficas del §7.2, más una tabla resumen (CSV y Markdown) que compare los tres escenarios.
-5. **Cuando llegue la simulación real** (domingo): corre los tres escenarios, revisa que las métricas tengan sentido y prepara los resultados de la entrega.
+   *Listo cuando:* las métricas del fixture coinciden con las calculadas a mano.
+4. **Gráficas y tabla** (`viz/plots.py`): las cuatro gráficas del §7.2, más una tabla resumen (CSV y Markdown) que compare los tres escenarios. *Listo cuando:* se generan desde el fixture y desde una corrida real.
+5. **Corridas reales y análisis** (domingo): corre los tres escenarios, revisa que las métricas tengan sentido y prepara los resultados de la entrega (tabla, gráficas y unas líneas de lectura). *Listo cuando:* hay resultados de los tres escenarios.
 
 **Respaldo:** Giovanni.
 

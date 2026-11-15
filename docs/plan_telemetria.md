@@ -48,20 +48,22 @@ No se tocan archivos de otras personas. Si falta algo en sus módulos, se pide a
 
 | Tipo | Campos |
 |---|---|
-| `AGENTE` | `id`, `set` (campos nuevos: `pose`={x,y,orientacion}, `estado`, `carga` entero, `intencion`={accion, celdas}, `objetivo`) |
+| `AGENTE` | `id`, `set` (campos nuevos: `pose`={x,y,orientacion}, `estado`, `carga` entero) |
 | `CELDA_COSECHADA` | `celda`, `agente` |
 | `DEPOSITO` | `agente`, `cantidad`, `entregado_total` |
+| `BLOQUEO` | `agente` (esperó este tick porque la celda siguiente estaba ocupada) |
 | `MENSAJE_ENVIADO` | `id`, `tipo_mensaje`, `de`, `a`, `payload`, `entrega_en` |
 | `MENSAJE_ENTREGADO` | `id`, `a` |
 
 **Reglas:**
 
-1. **Diferencia de agentes:** en cada tick, por cada agente, `AGENTE.set` contiene **solo los campos cuyo valor cambió** respecto al tick anterior, y cada campo va **completo** (si cambia la pose, va la pose entera). En el tick 0 van los cinco campos.
-2. **Orden dentro del tick** (fijo, por categoría): `MENSAJE_ENTREGADO`, `AGENTE` (en el orden de los agentes recibido), `CELDA_COSECHADA` y `DEPOSITO` (en el orden recibido), `MENSAJE_ENVIADO`.
+1. **Diferencia de agentes:** en cada tick, por cada agente, `AGENTE.set` contiene **solo los campos cuyo valor cambió** respecto al tick anterior, y cada campo va **completo** (si cambia la pose, va la pose entera). En el tick 0 van los tres campos.
+2. **Orden dentro del tick** (fijo, por categoría): `MENSAJE_ENTREGADO`, `AGENTE` (en el orden de los agentes recibido), `CELDA_COSECHADA`, `DEPOSITO` y `BLOQUEO` (en el orden recibido), `MENSAJE_ENVIADO`.
 3. **Omisión:** si un tick no tiene ningún cambio, no aparece (salvo el 0). `meta.total_ticks` es el último tick pasado a `agregar_tick`, haya o no cambios.
 4. **Checksum:** primeros 16 caracteres hexadecimales de SHA-256 sobre el JSON canónico (claves ordenadas, `separators=(",", ":")`, `ensure_ascii=False`) del objeto `{"tick", "cambios"}`. Es lo que ya hace `calcular_checksum` aplicado a un tick sin su `checksum`.
 5. **Escritura reproducible:** orden de inserción fijo (**no** `sort_keys`), `indent=2`, `ensure_ascii=False`, salto de línea final (`"\n"`, también en Windows), sin fechas ni horas, solo enteros, celdas como listas.
-6. **Estado en el tick `t`** = estado inicial + todos los eventos con `tick ≤ t`. Las celdas del campo (`y ≥ 1`) empiezan sin cosechar y lo entregado empieza en 0.
+6. **Qué no se registra:** rutas, intenciones ni objetivos de los agentes (dependen del algoritmo; el log solo guarda cambios explícitos). El diff mira únicamente `pose`, `estado` y `carga`; cualquier otro campo que traiga el registro se ignora.
+7. **Estado en el tick `t`** = estado inicial + todos los eventos con `tick ≤ t`. Las celdas del campo (`y ≥ 1`) empiezan sin cosechar y lo entregado empieza en 0.
 
 **Fragmento de ejemplo** (ticks 0, 7 y 8 de una corrida de 14 ticks en un mapa 4×3; se omiten los demás):
 
@@ -92,27 +94,11 @@ No se tocan archivos de otras personas. Si falta algo en sus módulos, se pide a
         {
           "tipo": "AGENTE",
           "id": "cosechadora_1",
-          "set": {
-            "pose": {"x": 2, "y": 0, "orientacion": "S"},
-            "estado": "EN_BASE",
-            "carga": 0,
-            "intencion": {"accion": "NINGUNA", "celdas": []},
-            "objetivo": null
-          }
+          "set": {"pose": {"x": 2, "y": 0, "orientacion": "S"}, "estado": "EN_BASE", "carga": 0}
         },
-        {
-          "tipo": "AGENTE",
-          "id": "carro_1",
-          "set": {
-            "pose": {"x": 1, "y": 0, "orientacion": "N"},
-            "estado": "EN_BASE",
-            "carga": 0,
-            "intencion": {"accion": "NINGUNA", "celdas": []},
-            "objetivo": null
-          }
-        }
+        {"tipo": "AGENTE", "id": "carro_1", "set": {"pose": {"x": 1, "y": 0, "orientacion": "N"}, "estado": "EN_BASE", "carga": 0}}
       ],
-      "checksum": "7f701082aea4e4c0"
+      "checksum": "e6cdae2a6603ded6"
     },
     {
       "tick": 7,
@@ -120,12 +106,7 @@ No se tocan archivos de otras personas. Si falta algo en sus módulos, se pide a
         {
           "tipo": "AGENTE",
           "id": "cosechadora_1",
-          "set": {
-            "pose": {"x": 3, "y": 1, "orientacion": "E"},
-            "carga": 4,
-            "estado": "LLENA_ESPERANDO",
-            "intencion": {"accion": "ESPERAR", "celdas": []}
-          }
+          "set": {"pose": {"x": 3, "y": 1, "orientacion": "E"}, "carga": 4, "estado": "LLENA_ESPERANDO"}
         },
         {"tipo": "CELDA_COSECHADA", "celda": [3, 1], "agente": "cosechadora_1"},
         {
@@ -138,19 +119,15 @@ No se tocan archivos de otras personas. Si falta algo en sus módulos, se pide a
           "entrega_en": 8
         }
       ],
-      "checksum": "d18ba6f812482689"
+      "checksum": "fba68a5265af24b5"
     },
     {
       "tick": 8,
       "cambios": [
         {"tipo": "MENSAJE_ENTREGADO", "id": 1, "a": "carro_1"},
-        {
-          "tipo": "AGENTE",
-          "id": "carro_1",
-          "set": {"estado": "YENDO_A_COSECHADORA", "intencion": {"accion": "MOVER", "celdas": [[2, 0], [3, 0]]}, "objetivo": "cosechadora_1"}
-        }
+        {"tipo": "AGENTE", "id": "carro_1", "set": {"estado": "YENDO_A_COSECHADORA"}}
       ],
-      "checksum": "9d96f3df0d98070d"
+      "checksum": "961887354b87c12d"
     }
   ],
   "metricas": {}
@@ -163,8 +140,8 @@ Otros módulos todavía no existen o están en desarrollo, así que esta tarea s
 
 - `TraceBuilder(config: dict, mundo: dict, agentes: list[dict])`, con `mundo = Mundo.descripcion()` y `agentes` el catálogo.
 - `agregar_tick(tick, registros, eventos)` **se llama en todos los ticks**:
-  - `registros`: lista con el `registro()` **completo** de cada agente, sin checksum, en el orden de los agentes: `{tick, agent_id, tipo, pose:{x,y,orientacion}, estado, carga:{actual,capacidad}, intencion:{accion,celdas}, objetivo}`. Ojo: en el registro la `carga` es `{actual, capacidad}`, pero en `AGENTE.set` es **solo el entero** `actual` (la capacidad está en `agentes`).
-  - `eventos`: lista ya tipada con `buzon.drenar_eventos() + mundo.drenar_eventos()` (los cuatro tipos que no son `AGENTE`).
+  - `registros`: lista con el `registro()` **completo** de cada agente, sin checksum, en el orden de los agentes: `{tick, agent_id, tipo, pose:{x,y,orientacion}, estado, carga:{actual,capacidad}}`. Ojo: en el registro la `carga` es `{actual, capacidad}`, pero en `AGENTE.set` es **solo el entero** `actual` (la capacidad está en `agentes`).
+  - `eventos`: lista ya tipada con `buzon.drenar_eventos() + mundo.drenar_eventos()` (los cinco tipos que no son `AGENTE`: `CELDA_COSECHADA`, `DEPOSITO`, `BLOQUEO`, `MENSAJE_ENVIADO`, `MENSAJE_ENTREGADO`).
 - `construir(metricas=None) -> dict`.
 
 Para probar sin los demás módulos: un **guion** (lista de estados por tick) de un ciclo corto que produzca registros y eventos con estas formas. El mismo guion sirve para el fixture (T5).
@@ -191,7 +168,7 @@ Orden recomendado: T1 → T2 → T3 → T4 (se hace en paralelo con las anterior
 
 - **Objetivo:** devolver el estado completo de cada tick, de 0 a `meta.total_ticks`, incluidos los ticks que no aparecen en el archivo.
 - **Herramientas:** biblioteca estándar, `pytest`.
-- **Qué hacer:** un generador que aplica los eventos en orden y, en cada tick, produce una copia del estado: por agente (`pose`, `estado`, `carga`, `intencion`, `objetivo`), celdas cosechadas, `entregado_total` y mensajes en tránsito. Si un tick no tiene eventos, repite el estado anterior.
+- **Qué hacer:** un generador que aplica los eventos en orden y, en cada tick, produce una copia del estado: por agente (`pose`, `estado`, `carga`), celdas cosechadas, `entregado_total`, mensajes en tránsito y la lista de `eventos` de ese tick (vacía en los ticks omitidos, para que las métricas puedan contar `BLOQUEO`). Si un tick no tiene eventos, repite el estado anterior.
 - **Listo cuando:** pasa `test_reconstruir_estado_por_tick` y, sobre el fixture, el estado reconstruido coincide con el que generó el guion.
 
 ### T4. Pruebas
@@ -204,7 +181,7 @@ Orden recomendado: T1 → T2 → T3 → T4 (se hace en paralelo con las anterior
 
 - **Objetivo:** un `trace.json` de ~60 ticks, coherente con la especificación, para que el visor y las métricas se desarrollen sin esperar la simulación real.
 - **Herramientas:** `tools/generar_trace_ejemplo.py` (biblioteca estándar + `TraceBuilder`).
-- **Qué hacer:** definir un **guion determinista** (sin aleatoriedad) de un escenario pequeño: ambos agentes en sus bases, un ciclo completo y al menos otro que incluya **espera** (`LLENA_ESPERANDO`) y **carga parcial final**, mensajes con `id`, depósitos. Generar el JSON con `TraceBuilder` y `escribir_trace`, y guardarlo en `tests/fixtures/trace_ejemplo.json`. Verificar sobre el guion: un paso por tick (R2), agentes nunca en la misma celda (R3) y conservación de grano (R7).
+- **Qué hacer:** definir un **guion determinista** (sin aleatoriedad) de un escenario pequeño: ambos agentes en sus bases, un ciclo completo y al menos otro que incluya **espera** (`LLENA_ESPERANDO`) y **carga parcial final**, un `BLOQUEO`, mensajes con `id`, depósitos. Generar el JSON con `TraceBuilder` y `escribir_trace`, y guardarlo en `tests/fixtures/trace_ejemplo.json`. Verificar sobre el guion: un paso por tick (R2), agentes nunca en la misma celda (R3) y conservación de grano (R7).
 - **Listo cuando:** `verificar_checksums` es `True` sobre el fixture, correr el script dos veces da el mismo archivo y quien haga el visor lo puede abrir.
 
 ### T6. Integración
@@ -242,7 +219,7 @@ Orden recomendado: T1 → T2 → T3 → T4 (se hace en paralelo con las anterior
 
 ## 7. Decisiones ya tomadas (no reabrir)
 
-`ticks` como arreglo; eventos tipados; mensajes dentro de los ticks; versión 2.0; `intencion.celdas` por tick; checksum por tick; el log guarda hechos y lo derivado ya calculado; escritura con orden de inserción fijo. Detalle y alternativas en `docs/decisiones.md` (2026-11-15). Cualquier cambio de contrato se avisa al equipo **antes** y se anota allí.
+`ticks` como arreglo; eventos tipados (incluido `BLOQUEO`); mensajes dentro de los ticks; versión 2.0; **sin rutas ni intenciones en el log** (solo cambios explícitos); checksum por tick; escritura con orden de inserción fijo. Detalle y alternativas en `docs/decisiones.md` (dos entradas del 2026-11-15). Cualquier cambio de contrato se avisa al equipo **antes** y se anota allí.
 
 ## 8. Detalles que suelen fallar
 
@@ -251,6 +228,7 @@ Orden recomendado: T1 → T2 → T3 → T4 (se hace en paralelo con las anterior
 - **Solo enteros:** nada de `float` en el archivo (el checksum y los byte a byte dependen de eso).
 - **Orden de agentes y eventos:** debe ser el mismo en cada tick y en cada corrida.
 - **`carga`:** `{actual, capacidad}` en el registro, pero un entero en `AGENTE.set`.
+- **Campos extra:** el diff solo mira `pose`, `estado` y `carga`; si un registro trae algo más, se ignora, no se copia al log.
 - **Tick 0:** siempre aparece, con todos los campos de todos los agentes.
 - **Último tick sin cambios:** `meta.total_ticks` debe reflejarlo aunque ese tick no aparezca en `ticks`.
 - **Saltos de línea:** abrir el archivo con `newline="\n"` para que Windows no cambie los bytes.

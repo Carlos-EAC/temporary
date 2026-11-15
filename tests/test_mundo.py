@@ -63,3 +63,8 @@ def test_cosechar_genera_evento():
 @pendiente
 def test_descripcion_del_mundo():
     """descripcion() trae ancho, alto, bodega, bases (con listas, no tuplas) y grano_por_celda."""
+
+
+@pendiente
+def test_bloqueo_genera_evento():
+    """registrar_bloqueo(agent_id) genera {tipo: BLOQUEO, agente}; drenar_eventos() lo devuelve en orden."""

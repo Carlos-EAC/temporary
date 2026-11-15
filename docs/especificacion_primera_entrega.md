@@ -136,7 +136,7 @@ Un mensaje enviado en el tick `t` se lee a partir del tick `t+1`. Esto elimina c
 Los agentes se mueven en el orden del tick (primero la cosechadora, después el carro), y cada uno ve las posiciones ya actualizadas. Reglas:
 
 1. Un agente nunca se mueve a una celda ocupada por otro. Si la siguiente celda de su ruta está ocupada, **recalcula la ruta** con BFS tratando las celdas ocupadas por otros agentes como bloqueadas. Si no existe ruta, **espera un tick** (se queda en su celda).
-2. La cosechadora sigue un camino fijo (la serpentina), así que no recalcula: si la siguiente celda de su camino está ocupada, espera. Estos ticks se cuentan en la métrica `ticks_bloqueados` y no se confunden con el tiempo ocioso.
+2. La cosechadora sigue un camino fijo (la serpentina), así que no recalcula: si la siguiente celda de su camino está ocupada, espera. Todo tick de espera por una celda ocupada (de la cosechadora, o del carro cuando no encuentra otra ruta) se registra como un evento `BLOQUEO` (§6.1) y cuenta en la métrica `ticks_bloqueados`; no se confunde con el tiempo ocioso.
 3. Con esas reglas, un intercambio de posiciones es imposible (R4), porque cada agente ve la celda del otro como ocupada.
 4. Para evitar que el carro se estacione justo en la siguiente celda de la serpentina (lo que frenaría a la cosechadora al reanudar), la celda objetivo del carro excluye la siguiente celda del camino de la cosechadora, siempre que haya otra opción (ver §5.2).
 
@@ -296,14 +296,15 @@ Un único archivo JSON por corrida. El **primer nivel es estático** (identifica
 | `AGENTE` | `id`, `set` | Estos campos de este agente tienen **estos valores nuevos** (absolutos, no incrementos) |
 | `CELDA_COSECHADA` | `celda`, `agente` | La celda pasa a estar cosechada |
 | `DEPOSITO` | `agente`, `cantidad`, `entregado_total` | Una carga llegó a la bodega. El total acumulado ya viene calculado |
+| `BLOQUEO` | `agente` | El agente quiso avanzar y la celda estaba ocupada, así que esperó este tick (§4.2) |
 | `MENSAJE_ENVIADO` | `id`, `tipo_mensaje`, `de`, `a`, `payload`, `entrega_en` | Se envió un mensaje, con todos sus campos |
 | `MENSAJE_ENTREGADO` | `id`, `a` | El mensaje llegó al buzón del receptor |
 
-**Campos de `AGENTE.set`** (el registro del agente de la propuesta, ahora como cambios): `pose` (`{x, y, orientacion}`), `estado` (enum del §5), `carga` (entero: unidades que lleva; la capacidad está en `agentes`), `intencion` (`{accion, celdas}`) y `objetivo` (id del agente, `"bodega"`, `"base"` o `null`). Un campo aparece solo si su valor cambió respecto al tick anterior, y se reemplaza **completo** (si cambia la `pose`, va la `pose` entera).
+**Campos de `AGENTE.set`:** `pose` (`{x, y, orientacion}`), `estado` (enum del §5) y `carga` (entero: unidades que lleva; la capacidad está en `agentes`). Un campo aparece solo si su valor cambió respecto al tick anterior, y se reemplaza **completo** (si cambia la `pose`, va la `pose` entera). Un agente que no cambia no genera nada.
 
-**`intencion.celdas`** son las próximas celdas de la ruta del agente, **recalculadas en cada tick**: si el agente avanza, la lista se acorta y `intencion` aparece como cambio en ese tick. Se prefiere usar más espacio a obligar al visor a derivar la ruta restante.
+**Qué no se registra:** rutas, intenciones ni objetivos de los agentes. Dependen del algoritmo que use el agente (BFS hoy, otro mañana); si estuvieran en el log, el visor tendría que interpretarlos y habría que cambiarlo cada vez que cambie el agente, y la lógica quedaría repartida entre Python y el visor. El log dice de forma **explícita qué cambió** (la pose, el estado, la carga, una celda, un depósito, un bloqueo), con un costo acotado: una celda cosechada no se cosecha dos veces, así que los eventos de celda son como máximo n × m. El `estado` ya indica a dónde va el agente (`YENDO_A_BODEGA`, `REGRESANDO_A_BASE`…) y la trayectoria recorrida se obtiene acumulando las poses ya aplicadas.
 
-**Orden dentro de un tick** (fijo, por categoría): primero `MENSAJE_ENTREGADO` (las entregas ocurren al inicio del tick), luego `AGENTE` (primero la cosechadora y después el carro), luego `CELDA_COSECHADA` y `DEPOSITO`, y al final `MENSAJE_ENVIADO`.
+**Orden dentro de un tick** (fijo, por categoría): primero `MENSAJE_ENTREGADO` (las entregas ocurren al inicio del tick), luego `AGENTE` (primero la cosechadora y después el carro), luego `CELDA_COSECHADA`, `DEPOSITO` y `BLOQUEO` (en el orden en que ocurrieron), y al final `MENSAJE_ENVIADO`.
 
 **Estado en el tick `t`** = estado inicial + todos los cambios con `tick ≤ t`. El **tick 0** es el estado inicial: lleva un `AGENTE` con todos los campos de cada agente; las celdas del campo (`y ≥ 1`) empiezan por cosechar y lo entregado empieza en 0. Un ayudante `reconstruir(trace)` (en `telemetria.py`) devuelve el estado completo tick a tick; lo usan las métricas, las gráficas y los tests.
 
@@ -324,7 +325,7 @@ Se calculan a partir del log (reconstruyendo el estado tick a tick con `reconstr
 | `distancia_cosechadora`, `distancia_carro` | Número de movimientos (celdas) de cada agente. |
 | `distancia_total` | Suma de las dos. |
 | `colisiones` | Ticks en que se viola R3 o R4. Debe ser 0, pero se mide. |
-| `ticks_bloqueados` | Ticks en que cada agente esperó porque su siguiente celda estaba ocupada (§4.2). |
+| `ticks_bloqueados` | Número de eventos `BLOQUEO` de cada agente (§4.2, §6.1). |
 | `num_ciclos` | Número de ciclos de llenado atendidos. |
 | `espera_por_ciclo` | Lista con los ticks ociosos de cada ciclo. |
 | `utilizacion_carro` | Fracción de ticks en que el carro no estuvo en `EN_BASE`. |
@@ -434,6 +435,7 @@ Con `pytest`. Mínimo:
 | `test_ticks_sin_cambios_no_aparecen` | Un tick en el que nada cambia no aparece en `ticks`; el tick 0 siempre aparece; `meta.total_ticks` es el último tick |
 | `test_diff_de_agente_solo_campos_que_cambian` | Un `AGENTE.set` contiene solo los campos que cambiaron, y cada campo va completo |
 | `test_reconstruir_estado_por_tick` | `reconstruir(trace)` devuelve el estado de cada tick (incluidos los ticks sin cambios) y coincide con el de la simulación |
+| `test_bloqueo_genera_evento` | Un agente que espera por una celda ocupada genera un `BLOQUEO` (con `registrar_bloqueo`) y cuenta en `ticks_bloqueados` |
 | `test_log_de_consola_de_mensajes` | El `Buzon` emite un registro de log por cada envío y por cada entrega (con `caplog`) |
 
 ---
@@ -533,6 +535,7 @@ class Mundo:
     def cosechar(self, agent_id: str, celda) -> int: ...             # devuelve unidades cosechadas
     def transferir(self, de: str, a: str, cantidad: int) -> int: ... # devuelve δ realmente transferida
     def depositar(self, agent_id: str) -> int: ...                   # entrega la carga a la bodega
+    def registrar_bloqueo(self, agent_id: str) -> None: ...          # el agente esperó por una celda ocupada (genera un evento BLOQUEO)
     def descripcion(self) -> dict: ...                               # ancho, alto, bodega, bases, grano_por_celda (va en trace["mundo"])
     def drenar_eventos(self) -> list[dict]: ...                      # CELDA_COSECHADA y DEPOSITO ocurridos desde la última llamada
 
@@ -540,7 +543,7 @@ class Mundo:
 class Agente:
     agent_id: str
     def paso(self, tick: int, mundo: Mundo, buzon: Buzon) -> None: ...
-    def registro(self, tick: int) -> dict: ...                       # registro del agente (§6.1) con valores completos; intencion.celdas = próximas celdas, recalculadas cada tick
+    def registro(self, tick: int) -> dict: ...                       # tick, agent_id, tipo, pose, estado, carga (§6.1), sin checksum ni rutas
 ```
 
 Pueden ajustar firmas si lo necesitan, pero cualquier cambio se anuncia al equipo y se anota en `docs/decisiones.md`.
@@ -659,6 +662,9 @@ Un escenario: `python -m harvest_sim.cli config/escenario_a.json`. Un test: `pyt
 
 **¿Por qué el mapa se guarda como cambios y no como una foto por tick?**
 Por tres motivos. (1) **Quién procesa el entorno:** es la simulación (Python), que ya sabe exactamente cuándo cambia algo; el visor, hoy pygame y mañana Unity, solo recibe el hecho («esta celda se cosechó», «este agente pasó a este estado») y no reimplementa reglas ni deduce nada. Eso evita repartir la lógica entre dos lenguajes y facilita depurar. (2) **Tamaño:** una foto por tick crece como `ticks × celdas`; los cambios crecen solo con lo que realmente ocurre. En un mapa de 8×7 la diferencia es pequeña, pero en un mapa grande y en 3D sí importa. (3) **Duraciones:** cuánto duró un estado se lee directo de «cuándo cambió», que es lo que miden las métricas. Por eso **todo** el log (agentes incluidos) se guarda como cambios, con `ticks` como arreglo (conserva el orden y lo lee Unity) y eventos tipados dentro de cada tick.
+
+**¿Por qué el log no guarda rutas ni intenciones de los agentes?**
+Porque dependen del algoritmo (BFS hoy, otro mañana). Si el log las guardara, el visor tendría que interpretarlas y habría que cambiarlo cada vez que cambie el agente, y la lógica quedaría repartida entre Python y el visor, que es justo lo que la propuesta evita (el visor solo reproduce y no decide). El log dice de forma explícita **qué cambió**: la pose, el estado, la carga, una celda cosechada, un depósito, un bloqueo. Cuesta espacio, pero acotado: una celda no se cosecha dos veces, así que hay como máximo n × m eventos de celda. Una función en el visor sería más compacta, pero repartiría la lógica.
 
 **¿Para qué el log de consola si ya existe `trace.json`?**
 Son para cosas distintas. El `trace.json` es el registro completo y exacto, pensado para que lo lean programas (visor, métricas, tests). La consola es para que una persona siga la corrida en vivo y encuentre rápido qué pasó («¿cuándo se llenó? ¿por qué el carro no salió?»). Los mensajes se guardan en ambos: en el `trace.json` porque la propuesta se compromete a un log de corrida con cada mensaje completo, y en la consola para leerlos en vivo.
