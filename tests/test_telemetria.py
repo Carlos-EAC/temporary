@@ -14,6 +14,7 @@ from harvest_sim.telemetria import (
     SCHEMA_VERSION,
     TraceBuilder,
     calcular_checksum,
+    calcular_metricas,
     cargar_trace,
     con_checksum,
     escribir_trace,
@@ -365,6 +366,89 @@ def test_fixture_cumple_las_reglas_y_cubre_los_casos():
         assert ev["entrega_en"] == t + 1 and entregas[ev["id"]] == t + 1
 
 
-@pytest.mark.skip(reason="pendiente — tarea 3 de Datos (métricas)")
+ORDEN_METRICAS = [
+    "tiempo_ocioso_cosechadora", "tiempo_transfiriendo", "tick_fin_cosecha", "tiempo_completacion",
+    "distancia_cosechadora", "distancia_carro", "distancia_total", "colisiones", "ticks_bloqueados",
+    "num_ciclos", "espera_por_ciclo", "utilizacion_carro", "grano_total_entregado",
+]
+
+
 def test_metricas_desde_el_log():
-    """Las métricas del §6.2 se calculan a partir del trace.json y coinciden con las calculadas a mano."""
+    """Las métricas del fixture coinciden con las calculadas a mano sobre su línea de tiempo:
+    cosechadora LLENA_ESPERANDO en 6-10, 19-26 y 32-41; TRANSFIRIENDO en 11-13, 27-29 y 42-43; última
+    transferencia en el tick 44; 49 ticks; la cosechadora recorre 3 + 7 + 4 celdas y el carro 8 + 6 + 4;
+    el carro está en EN_BASE 10 de 50 ticks."""
+    trace = cargar_trace(FIXTURE)
+    original = copy.deepcopy(trace)
+    metricas = calcular_metricas(trace)
+    assert list(metricas) == ORDEN_METRICAS
+    assert metricas == {
+        "tiempo_ocioso_cosechadora": 23,
+        "tiempo_transfiriendo": 8,
+        "tick_fin_cosecha": 44,
+        "tiempo_completacion": 49,
+        "distancia_cosechadora": 14,
+        "distancia_carro": 18,
+        "distancia_total": 32,
+        "colisiones": 0,
+        "ticks_bloqueados": {H: 2, C: 0},
+        "num_ciclos": 3,
+        "espera_por_ciclo": [5, 8, 10],
+        "utilizacion_carro": 0.8,
+        "grano_total_entregado": 8,
+    }
+    assert trace == original  # no modifica el trace
+
+
+def test_metricas_del_guion_de_20_ticks():
+    """Guion de 20 ticks (calculado a mano): LLENA_ESPERANDO 7-10, TRANSFIRIENDO 11-12, una sola carga,
+    un bloqueo de la cosechadora, un depósito de 4; la cosechadora avanza 7 celdas y el carro 5; el carro
+    sale de EN_BASE en el tick 8, así que 13 de 21 ticks."""
+    trace, _ = construir_trace()
+    assert calcular_metricas(trace) == {
+        "tiempo_ocioso_cosechadora": 4,
+        "tiempo_transfiriendo": 2,
+        "tick_fin_cosecha": 13,
+        "tiempo_completacion": 20,
+        "distancia_cosechadora": 7,
+        "distancia_carro": 5,
+        "distancia_total": 12,
+        "colisiones": 0,
+        "ticks_bloqueados": {H: 1, C: 0},
+        "num_ciclos": 1,
+        "espera_por_ciclo": [4],
+        "utilizacion_carro": 0.619,
+        "grano_total_entregado": 4,
+    }
+
+
+def test_metricas_distancia_ignora_cambios_de_orientacion():
+    """Girar sin cambiar de celda no es distancia: (1,0) E -> (1,0) S -> (2,0) S son 1 movimiento."""
+    b = TraceBuilder(CONFIG, MUNDO, AGENTES)
+    for t, (x, y, o) in enumerate([(1, 0, "E"), (1, 0, "S"), (2, 0, "S")]):
+        regs = [registro(t, H, {"pose": pose(x, y, o), "estado": "EN_BASE", "carga": 0}),
+                registro(t, C, {"pose": pose(0, 0, "N"), "estado": "EN_BASE", "carga": 0})]
+        b.agregar_tick(t, regs, [])
+    metricas = calcular_metricas(b.construir())
+    assert metricas["distancia_cosechadora"] == 1 and metricas["distancia_carro"] == 0
+
+
+def test_metricas_detectan_colisiones_y_cuentan_ticks():
+    """Misma celda en el tick 1 e intercambio de posiciones en el tick 3: son 2 ticks de colisión.
+    Sin mensajes, tick_fin_cosecha es None y no hay ciclos."""
+    posiciones = [  # (cosechadora, carro) en cada tick
+        ((1, 0), (3, 0)),
+        ((2, 0), (2, 0)),  # misma celda
+        ((2, 0), (3, 0)),
+        ((3, 0), (2, 0)),  # se intercambian: la cosechadora estaba en (2,0) y el carro en (3,0)
+    ]
+    b = TraceBuilder(CONFIG, MUNDO, AGENTES)
+    for t, (ph, pc) in enumerate(posiciones):
+        regs = [registro(t, H, {"pose": pose(*ph, "E"), "estado": "EN_BASE", "carga": 0}),
+                registro(t, C, {"pose": pose(*pc, "E"), "estado": "EN_BASE", "carga": 0})]
+        b.agregar_tick(t, regs, [])
+    metricas = calcular_metricas(b.construir())
+    assert metricas["colisiones"] == 2
+    assert metricas["tick_fin_cosecha"] is None and metricas["num_ciclos"] == 0
+    assert metricas["espera_por_ciclo"] == [] and metricas["grano_total_entregado"] == 0
+    assert metricas["utilizacion_carro"] == 0.0  # el carro nunca sale de EN_BASE

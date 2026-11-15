@@ -205,6 +205,81 @@ def escribir_trace(trace: dict, ruta: str | Path) -> None:
 
 
 def calcular_metricas(trace: dict) -> dict:
-    """Calcula las métricas del §6.2 A PARTIR DEL LOG (usando `reconstruir`).
-    Pendiente: es la tarea 3 de Datos (después del trace y del fixture)."""
-    raise NotImplementedError("Joel: calcular_metricas")
+    """Calcula las métricas del §6.2 A PARTIR DEL LOG (usa `reconstruir`; no modifica el trace).
+
+    Definiciones (registradas en docs/decisiones.md):
+    - Los ticks que se cuentan son 0..meta.total_ticks, ambos incluidos.
+    - tiempo_ocioso_cosechadora: ticks con estado LLENA_ESPERANDO (suma sobre las cosechadoras).
+    - tiempo_transfiriendo: ticks con estado TRANSFIRIENDO.
+    - tick_fin_cosecha: tick del último MENSAJE_ENVIADO de tipo TRANSFERENCIA_TERMINADA (None si no hay).
+    - tiempo_completacion: meta.total_ticks.
+    - distancia_*: ticks en que la celda (x, y) del agente cambió respecto al tick anterior.
+    - colisiones: ticks con dos agentes en la misma celda o intercambiando posiciones.
+    - ticks_bloqueados: eventos BLOQUEO, por agente ({agent_id: n}).
+    - num_ciclos: mensajes LLENA enviados.
+    - espera_por_ciclo: largo de cada racha consecutiva de LLENA_ESPERANDO.
+    - utilizacion_carro: ticks con el carro fuera de EN_BASE entre el total de ticks (4 decimales).
+    - grano_total_entregado: entregado_total al final del log.
+    """
+    cosechadoras = [a["id"] for a in trace["agentes"] if a["tipo"] == "cosechadora"]
+    carros = [a["id"] for a in trace["agentes"] if a["tipo"] == "carro"]
+    todos = [a["id"] for a in trace["agentes"]]
+    estados = list(reconstruir(trace))
+
+    def celda(e, a):
+        p = e["agentes"][a]["pose"]
+        return (p["x"], p["y"])
+
+    def contar_estado(estado, ids):
+        return sum(1 for e in estados for a in ids if e["agentes"][a]["estado"] == estado)
+
+    espera_por_ciclo = []
+    for a in cosechadoras:
+        racha = 0
+        for e in estados:
+            if e["agentes"][a]["estado"] == "LLENA_ESPERANDO":
+                racha += 1
+            elif racha:
+                espera_por_ciclo.append(racha)
+                racha = 0
+        if racha:
+            espera_por_ciclo.append(racha)
+
+    def distancia(ids):
+        return sum(1 for ant, e in zip(estados, estados[1:]) for a in ids if celda(ant, a) != celda(e, a))
+
+    colisiones = 0
+    for ant, e in zip([None] + estados[:-1], estados):
+        hubo = False
+        for i, a in enumerate(todos):
+            for b in todos[i + 1:]:
+                if celda(e, a) == celda(e, b):
+                    hubo = True
+                elif ant and celda(ant, a) == celda(e, b) and celda(ant, b) == celda(e, a):
+                    hubo = True
+        colisiones += hubo
+
+    eventos = [(e["tick"], ev) for e in estados for ev in e["eventos"]]
+    terminadas = [t for t, ev in eventos
+                  if ev["tipo"] == "MENSAJE_ENVIADO" and ev["tipo_mensaje"] == "TRANSFERENCIA_TERMINADA"]
+    dist_h, dist_c = distancia(cosechadoras), distancia(carros)
+    activos = contar_estado("EN_BASE", carros)
+    utilizacion = 0.0 if not carros else round(1 - activos / (len(estados) * len(carros)), 4)
+
+    return {
+        "tiempo_ocioso_cosechadora": contar_estado("LLENA_ESPERANDO", cosechadoras),
+        "tiempo_transfiriendo": contar_estado("TRANSFIRIENDO", cosechadoras),
+        "tick_fin_cosecha": max(terminadas) if terminadas else None,
+        "tiempo_completacion": trace["meta"]["total_ticks"],
+        "distancia_cosechadora": dist_h,
+        "distancia_carro": dist_c,
+        "distancia_total": dist_h + dist_c,
+        "colisiones": colisiones,
+        "ticks_bloqueados": {a: sum(1 for _, ev in eventos if ev["tipo"] == "BLOQUEO" and ev["agente"] == a)
+                             for a in todos},
+        "num_ciclos": sum(1 for _, ev in eventos
+                          if ev["tipo"] == "MENSAJE_ENVIADO" and ev["tipo_mensaje"] == "LLENA"),
+        "espera_por_ciclo": espera_por_ciclo,
+        "utilizacion_carro": utilizacion,
+        "grano_total_entregado": estados[-1]["entregado_total"],
+    }
