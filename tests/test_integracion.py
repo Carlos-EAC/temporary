@@ -65,6 +65,6 @@ def test_grano_entregado_igual_al_del_campo():
 
 
 @pendiente
-def test_cambios_reconstruyen_el_mapa():
-    """Aplicando los `cambios` del log al estado inicial se obtiene el mapa final: todas las celdas
+def test_eventos_reconstruyen_el_mapa():
+    """Aplicando los eventos del log al estado inicial se obtiene el mapa final: todas las celdas
     del campo cosechadas, cada una una sola vez, con ticks no decrecientes (§6.1)."""

@@ -16,8 +16,8 @@ def test_checksum_es_estable_e_ignora_el_campo_checksum():
 
 
 @pytest.mark.skip(reason="pendiente — Bloque C")
-def test_checksum_de_cada_registro_del_log():
-    """Cada registro de agente de un trace.json real verifica su checksum al recalcularlo."""
+def test_checksum_de_cada_tick_del_log():
+    """Cada tick de un trace.json real verifica su checksum al recalcularlo."""
 
 
 @pytest.mark.skip(reason="pendiente — Bloque C")
@@ -26,5 +26,32 @@ def test_metricas_desde_el_log():
 
 
 @pytest.mark.skip(reason="pendiente — Joel")
-def test_trace_incluye_mundo_y_cambios():
-    """El trace construido trae `mundo` y `cambios`, coherentes con el config."""
+def test_estructura_trace_v2():
+    """El trace construido tiene schema_version 2.0, meta, config, mundo, agentes, ticks (arreglo
+    ordenado) y metricas, coherentes con el config."""
+
+
+@pytest.mark.skip(reason="pendiente — Joel")
+def test_ticks_sin_cambios_no_aparecen():
+    """Un tick sin cambios no aparece; el tick 0 siempre aparece; meta.total_ticks es el último tick."""
+
+
+@pytest.mark.skip(reason="pendiente — Joel")
+def test_diff_de_agente_solo_campos_que_cambian():
+    """Un AGENTE.set contiene solo los campos que cambiaron y cada campo va completo."""
+
+
+@pytest.mark.skip(reason="pendiente — Joel")
+def test_orden_de_eventos_dentro_del_tick():
+    """Orden fijo: MENSAJE_ENTREGADO, AGENTE (cosechadora y luego carro), CELDA_COSECHADA y
+    DEPOSITO, MENSAJE_ENVIADO."""
+
+
+@pytest.mark.skip(reason="pendiente — Joel")
+def test_reconstruir_estado_por_tick():
+    """reconstruir(trace) devuelve el estado de cada tick, incluidos los ticks sin cambios."""
+
+
+@pytest.mark.skip(reason="pendiente — Joel")
+def test_escritura_reproducible():
+    """Escribir dos veces el mismo trace produce archivos idénticos; schema_version queda primero."""

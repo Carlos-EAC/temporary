@@ -1,6 +1,6 @@
 # Especificación técnica — Primera entrega parcial (línea base 2D)
 
-**Proyecto:** Reto agrícola multiagente, Equipo 3 · **Versión del documento:** 1.1 · **Esquema de mensajes (registros de agente):** v1.0
+**Proyecto:** Reto agrícola multiagente, Equipo 3 · **Versión del documento:** 1.1 · **Esquema del log (`trace.json`):** v2.0
 **Fecha límite:** lunes 16 de noviembre de 2026
 
 Este documento es la referencia única para construir la primera entrega. Quien lo lea ya conoce el problema general del reto (cosechadoras y carros recolectores, reducir el tiempo ocioso, comparar contra una línea base). Aquí se define **qué se construye ahora, cómo debe comportarse y con qué herramientas**. Cuando algo no esté especificado, elige la opción más simple y regístrala en `docs/decisiones.md`. Al final hay una sección de preguntas frecuentes (§14).
@@ -24,7 +24,7 @@ Entregables (checkpoint de la semana 3 del plan del curso):
 
 1. Simulación 2D funcionando de principio a fin con ambos agentes.
 2. Reglas físicas verificadas con un test cada una.
-3. Telemetría: log JSON v1.0 y las métricas calculadas.
+3. Telemetría: log JSON v2.0 y las métricas calculadas.
 4. Resultados de la línea base en **3 escenarios fijos** (ver §8).
 5. Visor 2D que reproduce el log.
 6. Gráficas de datos relevantes.
@@ -158,7 +158,7 @@ Un objeto `Buzon` intermedia **todos** los mensajes, aunque la comunicación sea
 
 - Cada agente tiene una fila **FIFO** de entrada.
 - El buzón asigna a cada mensaje un **`id` entero único y creciente** (1, 2, 3, …) al enviarlo.
-- El buzón registra cada mensaje en el log (`trace.json`): tick de envío y tick de entrega. Además imprime cada envío y cada entrega en la consola (ver §6.3).
+- El buzón anota cada envío y cada entrega como un evento (`MENSAJE_ENVIADO`, `MENSAJE_ENTREGADO`) que entra al `trace.json` dentro del tick correspondiente (§6.1). Además imprime cada envío y cada entrega en la consola (ver §6.3).
 
 Hoy ningún mensaje se pierde, así que el `id` no se usa para decidir nada. Se incluye desde ahora porque es barato y porque lo necesitarán los acuses de recibo y la detección de duplicados (ver §13).
 
@@ -255,71 +255,65 @@ La simulación termina cuando se cumplen a la vez: cosechadora en `FIN`, carro e
 
 ## 6. Telemetría
 
-### 6.1 Formato del log (`runs/<escenario>/trace.json`)
+### 6.1 Formato del log (`runs/<escenario>/trace.json`), esquema v2.0
 
-> **Estado: en revisión.** El principio (mapa como cambios, visor sin lógica) está decidido; la estructura exacta del archivo puede cambiar. Ver la entrada del 2026-11-14 en `docs/decisiones.md`.
-
-Un único archivo JSON por corrida:
+Un único archivo JSON por corrida. El **primer nivel es estático** (identificación, configuración, mapa, catálogo de agentes), salvo `ticks`, que contiene todo lo que ocurre con el tiempo **solo como cambios**. El visor aplica los cambios y dibuja: **no toma decisiones ni deduce nada**. Todo valor derivado (orientación, ruta, totales acumulados) ya viene calculado por Python. Así la lógica vive en un solo lugar y depurar es más fácil.
 
 ```json
 {
-  "schema_version": "1.0",
-  "escenario": "escenario_a",
-  "seed": 0,
+  "schema_version": "2.0",
+  "meta": { "escenario": "escenario_a", "seed": 0, "total_ticks": 212 },
   "config": { "...copia del config usado..." },
-  "mundo": {
-    "ancho": 8, "alto": 7, "bodega": [0, 0],
-    "bases": { "carro_1": [1, 0], "cosechadora_1": [2, 0] },
-    "grano_por_celda": 1
-  },
-  "cambios": [
-    { "tick": 2, "tipo": "CELDA_COSECHADA", "celda": [0, 1], "agente": "cosechadora_1" },
-    { "tick": 40, "tipo": "DEPOSITO", "agente": "carro_1", "cantidad": 10 }
+  "mundo": { "ancho": 8, "alto": 7, "bodega": [0, 0],
+             "bases": { "carro_1": [1, 0], "cosechadora_1": [2, 0] }, "grano_por_celda": 1 },
+  "agentes": [
+    { "id": "cosechadora_1", "tipo": "cosechadora", "capacidad": 10, "base": [2, 0] },
+    { "id": "carro_1", "tipo": "carro", "capacidad": 20, "base": [1, 0] }
   ],
   "ticks": [
-    { "tick": 0, "agentes": [ { "...registro de agente..." } ] }
-  ],
-  "mensajes": [
-    { "id": 1, "tipo": "LLENA", "emisor": "cosechadora_1", "receptor": "carro_1",
-      "tick_envio": 9, "tick_entrega": 10, "payload": { "x": 5, "y": 1, "carga": 10 } }
+    { "tick": 0, "cambios": [ "...eventos..." ], "checksum": "7f701082aea4e4c0" }
   ],
   "metricas": { "...ver §6.2..." }
 }
 ```
 
-**Registro de agente** (uno por agente en cada tick, según el esquema v1.0 de la propuesta):
+| Parte | Qué representa |
+|---|---|
+| `schema_version` | Versión del formato. Cambios incompatibles suben la versión mayor |
+| `meta` | Escenario, seed y `total_ticks` (último tick de la simulación; los ticks sin cambios no aparecen en `ticks`) |
+| `config` | Copia del config usado (reproducibilidad) |
+| `mundo` | Descripción estática calculada por el `Mundo` de Python. El visor no recalcula el layout |
+| `agentes` | Catálogo estático de agentes: id, tipo, capacidad y casilla de inicio |
+| `ticks` | **Arreglo** ordenado por `tick` ascendente. Solo aparecen los ticks con cambios (el tick 0 siempre aparece) |
+| `ticks[].cambios` | **Lista cronológica de eventos tipados** de ese tick (ver abajo) |
+| `ticks[].checksum` | Primeros 16 caracteres hexadecimales de SHA-256 sobre el JSON canónico (claves ordenadas, sin espacios, `ensure_ascii=False`) del objeto `{"tick", "cambios"}` |
+| `metricas` | Resultados calculados desde el log al terminar (§6.2). El visor las ignora |
 
-| Campo | Tipo | Contenido |
-|-------|------|-----------|
-| `tick` | entero | Paso de tiempo |
-| `agent_id` | texto | `cosechadora_1` o `carro_1` |
-| `tipo` | texto | `cosechadora` o `carro` |
-| `pose` | objeto | `{x, y, orientacion}` |
-| `estado` | texto | Nombre del estado (enum de §5) |
-| `carga` | objeto | `{actual, capacidad}` |
-| `intencion` | objeto | `{accion, celdas}`: la siguiente acción y las próximas celdas de su ruta (vacía si no aplica) |
-| `objetivo` | texto o nulo | id del agente, `"bodega"`, `"base"` o `null` |
-| `checksum` | texto | Primeros 16 caracteres hexadecimales de SHA-256 sobre el JSON canónico (claves ordenadas, sin espacios) del registro **sin** el campo `checksum` |
+**Tipos de evento** (`cambios[].tipo`):
 
-El objeto de cada mensaje (con `id`) es la lista `mensajes` del log; no forma parte de los registros de agente v1.0.
-
-**Mundo y cambios (en vez de una foto del mapa por tick).** El log no repite el mapa en cada tick. Guarda:
-
-- `mundo`: la descripción estática, tal como la calcula el `Mundo` de Python (`ancho`, `alto`, `bodega`, `bases`, `grano_por_celda`). El visor la lee; **no recalcula** el layout.
-- `cambios`: lo que cambia en el mundo, **solo cuando cambia**, en orden cronológico:
-
-| `tipo` | Campos | Cuándo |
+| Tipo | Campos | Significado |
 |---|---|---|
-| `CELDA_COSECHADA` | `tick`, `celda`, `agente` | `Mundo.cosechar` cosecha una celda |
-| `DEPOSITO` | `tick`, `agente`, `cantidad` | `Mundo.depositar` entrega una carga a la bodega |
+| `AGENTE` | `id`, `set` | Estos campos de este agente tienen **estos valores nuevos** (absolutos, no incrementos) |
+| `CELDA_COSECHADA` | `celda`, `agente` | La celda pasa a estar cosechada |
+| `DEPOSITO` | `agente`, `cantidad`, `entregado_total` | Una carga llegó a la bodega. El total acumulado ya viene calculado |
+| `MENSAJE_ENVIADO` | `id`, `tipo_mensaje`, `de`, `a`, `payload`, `entrega_en` | Se envió un mensaje, con todos sus campos |
+| `MENSAJE_ENTREGADO` | `id`, `a` | El mensaje llegó al buzón del receptor |
 
-Estado inicial: todas las celdas del campo (`y ≥ 1`) están por cosechar, con `grano_por_celda` unidades, y lo entregado es 0. **Estado del mundo en el tick `t` = estado inicial + todos los cambios con `tick ≤ t`.** Los cambios se ordenan por tick y, dentro del mismo tick, por orden de ocurrencia. Quien produce la lista es la simulación (el `Mundo`); el visor y las métricas solo la leen y **no deducen** qué se cosechó a partir de las posiciones. Los registros de agente sí se guardan completos en cada tick (son pocos y casi siempre cambian). Más adelante, nuevos tipos (por ejemplo, un obstáculo que aparece) se agregan a esta misma lista.
+**Campos de `AGENTE.set`** (el registro del agente de la propuesta, ahora como cambios): `pose` (`{x, y, orientacion}`), `estado` (enum del §5), `carga` (entero: unidades que lleva; la capacidad está en `agentes`), `intencion` (`{accion, celdas}`) y `objetivo` (id del agente, `"bodega"`, `"base"` o `null`). Un campo aparece solo si su valor cambió respecto al tick anterior, y se reemplaza **completo** (si cambia la `pose`, va la `pose` entera).
+
+**`intencion.celdas`** son las próximas celdas de la ruta del agente, **recalculadas en cada tick**: si el agente avanza, la lista se acorta y `intencion` aparece como cambio en ese tick. Se prefiere usar más espacio a obligar al visor a derivar la ruta restante.
+
+**Orden dentro de un tick** (fijo, por categoría): primero `MENSAJE_ENTREGADO` (las entregas ocurren al inicio del tick), luego `AGENTE` (primero la cosechadora y después el carro), luego `CELDA_COSECHADA` y `DEPOSITO`, y al final `MENSAJE_ENVIADO`.
+
+**Estado en el tick `t`** = estado inicial + todos los cambios con `tick ≤ t`. El **tick 0** es el estado inicial: lleva un `AGENTE` con todos los campos de cada agente; las celdas del campo (`y ≥ 1`) empiezan por cosechar y lo entregado empieza en 0. Un ayudante `reconstruir(trace)` (en `telemetria.py`) devuelve el estado completo tick a tick; lo usan las métricas, las gráficas y los tests.
+
+**Escritura del archivo:** el contenido se escribe con **orden de inserción fijo** (no `sort_keys`), `indent=2`, `ensure_ascii=False` y un salto de línea final, para que `schema_version` quede arriba y dos corridas iguales den el mismo archivo. El orden canónico (claves ordenadas) se usa solo para el checksum. Sin fechas ni horas, y solo enteros (sin decimales).
 
 Requisito de reproducibilidad: dos corridas con el mismo config producen el mismo `trace.json` byte a byte.
 
 ### 6.2 Métricas
 
-Se calculan a partir del log (o durante la simulación, pero deben poder recalcularse desde el log) y se guardan en `metricas`:
+Se calculan a partir del log (reconstruyendo el estado tick a tick con `reconstruir`; pueden calcularse durante la simulación, pero deben poder recalcularse desde el log) y se guardan en `metricas`:
 
 | Métrica | Definición |
 |---------|------------|
@@ -334,7 +328,7 @@ Se calculan a partir del log (o durante la simulación, pero deben poder recalcu
 | `num_ciclos` | Número de ciclos de llenado atendidos. |
 | `espera_por_ciclo` | Lista con los ticks ociosos de cada ciclo. |
 | `utilizacion_carro` | Fracción de ticks en que el carro no estuvo en `EN_BASE`. |
-| `grano_total_entregado` | Suma de `cantidad` de los cambios `DEPOSITO`. Debe coincidir con el grano total del campo (R7). |
+| `grano_total_entregado` | Suma de `cantidad` de los eventos `DEPOSITO`. Debe coincidir con el grano total del campo (R7). |
 
 **El combustible no se mide en esta entrega.** Se deja como nota para la siguiente (§13).
 
@@ -366,7 +360,7 @@ t=031 | carro_1 deposita 10 en la bodega (entregado: 10/48)
 
 Lee un `trace.json` y lo reproduce. **No importa nada de la simulación**: así el mismo log servirá luego para Unity.
 
-Del log toma `mundo` (para dibujar el grid, la bodega y las bases) y va aplicando los `cambios` a medida que avanza el tick (para pintar las celdas cosechadas). **No deduce reglas del juego**: no infiere qué se cosechó a partir de las posiciones de la cosechadora.
+Del log toma `mundo` y `agentes` (para dibujar el grid, la bodega y las bases) y va aplicando, tick a tick, los eventos de `cambios` (agentes, celdas cosechadas, depósitos). **No deduce reglas del juego ni calcula nada**: orientación, ruta y totales ya vienen en el log.
 
 Debe mostrar: el grid; celdas cosechadas vs. por cosechar (colores distintos); la bodega y las casillas de inicio (marcadas distinto); ambos agentes con su orientación; una barra de carga por agente; el estado actual de cada uno como texto; el número de tick y la trayectoria reciente (estela). Controles: pausa/reanudar, avance paso a paso, velocidad ajustable.
 
@@ -431,12 +425,15 @@ Con `pytest`. Mínimo:
 | `test_mensaje_se_lee_al_tick_siguiente` | Un mensaje enviado en `t` no es visible en `t` |
 | `test_duracion_estados` | Un estado de duración `N` dura `N` snapshots |
 | `test_reproducibilidad` | Dos corridas iguales producen `trace.json` idéntico |
-| `test_checksum` | El checksum de cada registro se verifica al recalcularlo |
+| `test_checksum` | El checksum de cada tick se verifica al recalcularlo |
 | `test_config_invalida` | Las validaciones de §3 fallan con mensaje claro (incluido el ancho mínimo y `num_*` ≠ 1) |
 | `test_terminacion` | La corrida termina y cumple las condiciones de §5.4 |
-| `test_cosechar_registra_cambio` | `Mundo.cosechar` agrega un `CELDA_COSECHADA` con tick, celda y agente; `depositar` agrega un `DEPOSITO` |
-| `test_cambios_reconstruyen_el_mapa` | Aplicando los cambios del log al estado inicial se obtiene el mapa final: todas las celdas cosechadas, cada una una sola vez, con ticks no decrecientes |
-| `test_trace_incluye_mundo_y_cambios` | El `trace.json` trae `mundo` y `cambios`, coherentes con el `config` |
+| `test_cosechar_genera_evento` | `Mundo.cosechar` genera un `CELDA_COSECHADA` con celda y agente; `depositar` genera un `DEPOSITO` con `entregado_total` (se obtienen con `drenar_eventos()`) |
+| `test_eventos_reconstruyen_el_mapa` | Aplicando los eventos del log al estado inicial se obtiene el mapa final: todas las celdas cosechadas, cada una una sola vez, con ticks no decrecientes |
+| `test_estructura_trace_v2` | El `trace.json` tiene `schema_version` `2.0`, `meta`, `config`, `mundo`, `agentes`, `ticks` (arreglo ordenado) y `metricas`, coherentes con el `config` |
+| `test_ticks_sin_cambios_no_aparecen` | Un tick en el que nada cambia no aparece en `ticks`; el tick 0 siempre aparece; `meta.total_ticks` es el último tick |
+| `test_diff_de_agente_solo_campos_que_cambian` | Un `AGENTE.set` contiene solo los campos que cambiaron, y cada campo va completo |
+| `test_reconstruir_estado_por_tick` | `reconstruir(trace)` devuelve el estado de cada tick (incluidos los ticks sin cambios) y coincide con el de la simulación |
 | `test_log_de_consola_de_mensajes` | El `Buzon` emite un registro de log por cada envío y por cada entrega (con `caplog`) |
 
 ---
@@ -464,7 +461,7 @@ harvest_sim/
 │   ├── cosechadora.py         # estados y lógica
 │   ├── carro.py               # estados y lógica
 │   ├── simulacion.py          # bucle de ticks, condición de término
-│   ├── telemetria.py          # log v1.0, checksum, métricas
+│   ├── telemetria.py          # log v2.0 (TraceBuilder), checksum, reconstruir, métricas
 │   └── cli.py                 # python -m harvest_sim.cli config/escenario_a.json
 ├── viz/
 │   ├── viewer.py
@@ -523,10 +520,10 @@ class Buzon:
     def entregar(self, tick: int) -> None: ...                      # inicio de cada tick
     def leer(self, agent_id: str) -> "Mensaje | None": ...          # saca el siguiente (FIFO)
     def hay_pendientes(self, agent_id: str) -> bool: ...
+    def drenar_eventos(self) -> list[dict]: ...                      # MENSAJE_ENVIADO y MENSAJE_ENTREGADO desde la última llamada
 
 class Mundo:
     bodega: tuple[int, int]                                          # (0, 0)
-    tick_actual: int                                                 # lo fija simulacion.py al inicio de cada tick
     def base_de(self, agent_id: str) -> tuple[int, int]: ...
     def camino_serpentina(self) -> list[tuple[int, int]]: ...
     def posicion(self, agent_id: str) -> tuple[int, int]: ...
@@ -537,13 +534,13 @@ class Mundo:
     def transferir(self, de: str, a: str, cantidad: int) -> int: ... # devuelve δ realmente transferida
     def depositar(self, agent_id: str) -> int: ...                   # entrega la carga a la bodega
     def descripcion(self) -> dict: ...                               # ancho, alto, bodega, bases, grano_por_celda (va en trace["mundo"])
-    def cambios(self) -> list[dict]: ...                             # CELDA_COSECHADA y DEPOSITO, en orden (va en trace["cambios"])
+    def drenar_eventos(self) -> list[dict]: ...                      # CELDA_COSECHADA y DEPOSITO ocurridos desde la última llamada
 
 # Interfaz común de agente
 class Agente:
     agent_id: str
     def paso(self, tick: int, mundo: Mundo, buzon: Buzon) -> None: ...
-    def registro(self, tick: int) -> dict: ...                       # registro v1.0 sin checksum
+    def registro(self, tick: int) -> dict: ...                       # registro del agente (§6.1) con valores completos; intencion.celdas = próximas celdas, recalculadas cada tick
 ```
 
 Pueden ajustar firmas si lo necesitan, pero cualquier cambio se anuncia al equipo y se anota en `docs/decisiones.md`.
@@ -558,7 +555,7 @@ Cada bloque puede trabajarse en paralelo una vez acordado el contrato del §10.
 |---|---|---|---|
 | **A. Mundo y rutas** | Grid, bodega, bases, serpentina, BFS con celdas bloqueadas, funciones de grano, validación de config, tests R1, R2, R8, R9, serpentina, casillas, config inválida | `config.py`, `mundo.py`, `config/*.json` | Contrato |
 | **B. Agentes y mensajería** | Máquinas de estados de ambos agentes, buzón FIFO con ids, resolución de conflictos, bucle de ticks, condición de término | `mensajes.py`, `cosechadora.py`, `carro.py`, `simulacion.py` | Contrato; API de `Mundo` del bloque A (puede usar un stub al inicio) |
-| **C. Telemetría y métricas** | Registro v1.0, checksum, escritura de `trace.json`, cálculo de métricas, gráficas | `telemetria.py`, `viz/plots.py` | Contrato; datos de B (puede probar con registros falsos) |
+| **C. Telemetría y métricas** | Log v2.0 (`TraceBuilder`), checksum por tick, `reconstruir`, escritura de `trace.json`, cálculo de métricas, gráficas | `telemetria.py`, `viz/plots.py` | Contrato; datos de B (puede probar con registros falsos) |
 | **D. Visor y calidad** | Visor desde `trace.json`, tests de flujo y de reglas, README, `requirements.txt`, `cli.py` | `viz/viewer.py`, `tests/`, `README.md` | Contrato; `trace.json` de C (puede empezar con uno hecho a mano) |
 
 **Primer hito (sábado):** una corrida de extremo a extremo, aunque sea fea. Mejor un esqueleto que corre que piezas perfectas aisladas.
@@ -634,7 +631,7 @@ Para evitar que el resultado dependa del orden de ejecución dentro del tick. Es
 Porque cuando se simule la pérdida o duplicación de mensajes, los acuses de recibo y la deduplicación necesitarán un identificador. Cuesta una línea hoy y evita cambiar el esquema después. Además ayuda a seguir un mensaje en el log.
 
 **¿Qué es el checksum del log y para qué sirve?**
-Un hash de cada registro de agente (sin el propio campo `checksum`). Permite detectar registros dañados o editados a mano. El test `test_checksum` lo recalcula y lo compara.
+Un hash de cada tick (el objeto `{tick, cambios}`, sin el propio campo `checksum`). Permite detectar ticks dañados o editados a mano. El test `test_checksum` lo recalcula y lo compara.
 
 **¿Por qué el visor y las gráficas no importan la simulación?**
 Para que la simulación sea la única fuente de verdad y el visor funcione con cualquier `trace.json`, incluido el que, más adelante, leerá Unity. Si el visor necesita un dato que no está en el log, hay que agregarlo al log, no importarlo.
@@ -661,7 +658,7 @@ Usa stubs o datos de mano que respeten el contrato del §10: un `Mundo` falso pa
 Un escenario: `python -m harvest_sim.cli config/escenario_a.json`. Un test: `pytest tests/test_nombre.py::test_funcion`. Todo: `pytest`.
 
 **¿Por qué el mapa se guarda como cambios y no como una foto por tick?**
-Por dos motivos. (1) **Quién procesa el entorno:** es la simulación (Python), que ya sabe exactamente cuándo se cosecha una celda; el visor, hoy pygame y mañana Unity, solo recibe la instrucción «esta celda se cosechó en el tick `t`» y no necesita reimplementar reglas ni deducirlas de las posiciones. (2) **Tamaño:** una foto por tick crece como `ticks × celdas`; los cambios crecen solo con lo que realmente ocurre (cada celda cambia una vez). En un mapa de 8×7 la diferencia es pequeña, pero en un mapa grande y en 3D sí importa, y no cuesta nada hacerlo bien desde ahora. Los agentes sí se guardan completos en cada tick: son pocos y casi siempre cambian.
+Por tres motivos. (1) **Quién procesa el entorno:** es la simulación (Python), que ya sabe exactamente cuándo cambia algo; el visor, hoy pygame y mañana Unity, solo recibe el hecho («esta celda se cosechó», «este agente pasó a este estado») y no reimplementa reglas ni deduce nada. Eso evita repartir la lógica entre dos lenguajes y facilita depurar. (2) **Tamaño:** una foto por tick crece como `ticks × celdas`; los cambios crecen solo con lo que realmente ocurre. En un mapa de 8×7 la diferencia es pequeña, pero en un mapa grande y en 3D sí importa. (3) **Duraciones:** cuánto duró un estado se lee directo de «cuándo cambió», que es lo que miden las métricas. Por eso **todo** el log (agentes incluidos) se guarda como cambios, con `ticks` como arreglo (conserva el orden y lo lee Unity) y eventos tipados dentro de cada tick.
 
 **¿Para qué el log de consola si ya existe `trace.json`?**
 Son para cosas distintas. El `trace.json` es el registro completo y exacto, pensado para que lo lean programas (visor, métricas, tests). La consola es para que una persona siga la corrida en vivo y encuentre rápido qué pasó («¿cuándo se llenó? ¿por qué el carro no salió?»). Los mensajes se guardan en ambos: en el `trace.json` porque la propuesta se compromete a un log de corrida con cada mensaje completo, y en la consola para leerlos en vivo.

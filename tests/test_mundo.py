@@ -55,9 +55,9 @@ def test_duracion_ticks():
 
 
 @pendiente
-def test_cosechar_registra_cambio():
-    """cosechar agrega {tick, tipo: CELDA_COSECHADA, celda, agente}; depositar agrega
-    {tick, tipo: DEPOSITO, agente, cantidad}; el tick es mundo.tick_actual."""
+def test_cosechar_genera_evento():
+    """cosechar genera {tipo: CELDA_COSECHADA, celda, agente}; depositar genera {tipo: DEPOSITO,
+    agente, cantidad, entregado_total}; drenar_eventos() los devuelve en orden y vacía la lista."""
 
 
 @pendiente
