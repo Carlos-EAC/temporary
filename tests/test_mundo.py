@@ -55,16 +55,11 @@ def test_duracion_ticks():
 
 
 @pendiente
-def test_cosechar_genera_evento():
-    """cosechar genera {tipo: CELDA_COSECHADA, celda, agente}; depositar genera {tipo: DEPOSITO,
-    agente, cantidad, entregado_total}; drenar_eventos() los devuelve en orden y vacía la lista."""
+def test_cosechar_registra_cambio():
+    """cosechar agrega {tick, tipo: CELDA_COSECHADA, celda, agente}; depositar agrega
+    {tick, tipo: DEPOSITO, agente, cantidad}; el tick es mundo.tick_actual."""
 
 
 @pendiente
 def test_descripcion_del_mundo():
     """descripcion() trae ancho, alto, bodega, bases (con listas, no tuplas) y grano_por_celda."""
-
-
-@pendiente
-def test_bloqueo_genera_evento():
-    """registrar_bloqueo(agent_id) genera {tipo: BLOQUEO, agente}; drenar_eventos() lo devuelve en orden."""

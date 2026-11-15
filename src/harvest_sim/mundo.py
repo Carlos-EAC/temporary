@@ -53,25 +53,21 @@ class Mundo:
         """Grano cosechado acumulado, para verificar la conservación R7."""
         raise NotImplementedError("Carlos: Mundo.grano_cosechado")
 
-    def registrar_bloqueo(self, agent_id: str) -> None:
-        """El agente esperó este tick porque su siguiente celda estaba ocupada (§4.2).
-        Genera un evento BLOQUEO. Lo llama el agente (carro o cosechadora)."""
-        raise NotImplementedError("Carlos: Mundo.registrar_bloqueo")
+    # --- Descripción y cambios para el log (§6.1) -----------------------------
+    tick_actual: int     # lo fija simulacion.py al inicio de cada tick
 
-    # --- Descripción y eventos para el log (§6.1) -----------------------------
     def descripcion(self) -> dict:
         """Parte estática para trace["mundo"]: ancho, alto, bodega, bases
         ({agent_id: [x, y]}) y grano_por_celda. Celdas como listas, no tuplas."""
         raise NotImplementedError("Carlos: Mundo.descripcion")
 
-    def drenar_eventos(self) -> list[dict]:
-        """Devuelve los eventos ocurridos desde la última llamada y los vacía.
-        `cosechar` y `depositar` los generan al ocurrir:
-          {"tipo": "CELDA_COSECHADA", "celda": [x, y], "agente": id}
-          {"tipo": "DEPOSITO", "agente": id, "cantidad": n, "entregado_total": total}
-          {"tipo": "BLOQUEO", "agente": id}
-        simulacion.py los pasa a TraceBuilder.agregar_tick en cada tick."""
-        raise NotImplementedError("Carlos: Mundo.drenar_eventos")
+    def cambios(self) -> list[dict]:
+        """Lista cronológica para trace["cambios"]. `cosechar` y `depositar` agregan cada
+        cambio al ocurrir, con `tick_actual`:
+          {"tick": t, "tipo": "CELDA_COSECHADA", "celda": [x, y], "agente": id}
+          {"tick": t, "tipo": "DEPOSITO", "agente": id, "cantidad": n}
+        """
+        raise NotImplementedError("Carlos: Mundo.cambios")
 
     # --- Layout ---------------------------------------------------------
     def base_de(self, agent_id: str) -> Celda:

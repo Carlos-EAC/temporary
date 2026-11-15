@@ -16,6 +16,5 @@ class Agente(Protocol):
         ...
 
     def registro(self, tick: int) -> dict:
-        """Registro completo del agente (§6.1): tick, agent_id, tipo, pose, estado y carga
-        {actual, capacidad}, sin checksum. No incluye rutas ni intenciones."""
+        """Registro de agente v1.0 (§6.1) SIN el campo checksum; lo agrega telemetria."""
         ...

@@ -47,10 +47,7 @@ class Buzon:
     def hay_pendientes(self, agent_id: str) -> bool:
         raise NotImplementedError("Bloque B: Buzon.hay_pendientes")
 
-    def drenar_eventos(self) -> list[dict]:
-        """Devuelve los eventos de mensajes ocurridos desde la última llamada y los vacía:
-          {"tipo": "MENSAJE_ENVIADO", "id": n, "tipo_mensaje": "LLENA", "de": id, "a": id,
-           "payload": {...}, "entrega_en": tick}
-          {"tipo": "MENSAJE_ENTREGADO", "id": n, "a": id}
-        simulacion.py los pasa a TraceBuilder.agregar_tick en cada tick."""
-        raise NotImplementedError("Emilio: Buzon.drenar_eventos")
+    def registro(self) -> list[dict]:
+        """Lista de mensajes para el log: id, tipo, emisor, receptor, tick_envio,
+        tick_entrega, payload."""
+        raise NotImplementedError("Bloque B: Buzon.registro")

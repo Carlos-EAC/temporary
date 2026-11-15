@@ -35,5 +35,5 @@ def test_carro_registra_cantidad_del_mensaje():
 
 
 @pendiente
-def test_carro_registro_completo():
-    """registro() trae tick, agent_id, tipo, pose, estado y carga {actual, capacidad} (§6.1), sin checksum ni rutas."""
+def test_carro_registro_v1_0():
+    """registro() trae pose, estado, carga, intencion{accion,celdas}, objetivo (§6.1), sin checksum."""

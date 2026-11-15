@@ -41,9 +41,9 @@ def test_cantidad_en_mensaje_de_fin_de_transferencia():
 
 @pendiente
 def test_espera_si_la_siguiente_celda_esta_ocupada():
-    """§4.2: no recalcula; espera un tick y llama a mundo.registrar_bloqueo (evento BLOQUEO)."""
+    """§4.2: no recalcula; espera un tick (intencion.accion = ESPERAR_BLOQUEO)."""
 
 
 @pendiente
-def test_cosechadora_registro_completo():
-    """registro() trae tick, agent_id, tipo, pose, estado y carga {actual, capacidad} (§6.1), sin checksum ni rutas."""
+def test_cosechadora_registro_v1_0():
+    """registro() trae pose, estado, carga, intencion{accion,celdas}, objetivo (§6.1), sin checksum."""

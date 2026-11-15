@@ -21,9 +21,8 @@ def test_mensaje_se_lee_al_tick_siguiente():
 
 
 @pendiente
-def test_eventos_de_mensajes_para_el_log():
-    """drenar_eventos() devuelve MENSAJE_ENVIADO (id, tipo_mensaje, de, a, payload, entrega_en) y
-    MENSAJE_ENTREGADO (id, a) en orden, y vacía la lista."""
+def test_registro_de_mensajes_para_el_log():
+    """registro() trae id, tipo, emisor, receptor, tick_envio, tick_entrega y payload."""
 
 
 @pendiente
