@@ -39,9 +39,16 @@ class TraceBuilder:
         """Recibe los registros de agente SIN checksum (Agente.registro) y les agrega el checksum."""
         raise NotImplementedError("Joel: TraceBuilder.agregar_tick")
 
-    def construir(self, mensajes: list[dict], metricas: dict | None = None) -> dict:
+    def construir(
+        self,
+        mundo: dict,
+        cambios: list[dict],
+        mensajes: list[dict],
+        metricas: dict | None = None,
+    ) -> dict:
         """Devuelve el dict completo del §6.1 (schema_version, escenario, seed, config,
-        ticks, mensajes, metricas)."""
+        mundo, cambios, ticks, mensajes, metricas). `mundo` = Mundo.descripcion();
+        `cambios` = Mundo.cambios()."""
         raise NotImplementedError("Joel: TraceBuilder.construir")
 
 

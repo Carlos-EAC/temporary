@@ -23,3 +23,8 @@ def test_checksum_de_cada_registro_del_log():
 @pytest.mark.skip(reason="pendiente — Bloque C")
 def test_metricas_desde_el_log():
     """Las métricas del §6.2 se calculan a partir del trace.json y coinciden con las de la simulación."""
+
+
+@pytest.mark.skip(reason="pendiente — Joel")
+def test_trace_incluye_mundo_y_cambios():
+    """El trace construido trae `mundo` y `cambios`, coherentes con el config."""

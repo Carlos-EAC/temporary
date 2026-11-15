@@ -23,3 +23,8 @@ def test_mensaje_se_lee_al_tick_siguiente():
 @pendiente
 def test_registro_de_mensajes_para_el_log():
     """registro() trae id, tipo, emisor, receptor, tick_envio, tick_entrega y payload."""
+
+
+@pendiente
+def test_log_de_consola_de_mensajes(caplog):
+    """El Buzon emite un registro de log por cada envío y por cada entrega (§6.3)."""

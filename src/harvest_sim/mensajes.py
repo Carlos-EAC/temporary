@@ -30,11 +30,14 @@ class Buzon:
 
     def enviar(self, mensaje: Mensaje) -> int:
         """Asigna un id único y creciente, encola el mensaje para entregarlo en tick+1
-        y lo registra para el log. Devuelve el id."""
+        y lo registra para el log. Devuelve el id.
+        También imprime el envío con logging.getLogger("harvest_sim.mensajes") (§6.3):
+        t=014 | MSG #1 LLENA cosechadora_1 -> carro_1 {x: 5, y: 1, carga: 10} (se entrega en t=015)"""
         raise NotImplementedError("Bloque B: Buzon.enviar")
 
     def entregar(self, tick: int) -> None:
-        """Inicio de cada tick: pasa a los buzones de entrada los mensajes enviados en tick-1."""
+        """Inicio de cada tick: pasa a los buzones de entrada los mensajes enviados en tick-1.
+        Imprime cada entrega: t=015 | MSG #1 entregado a carro_1"""
         raise NotImplementedError("Bloque B: Buzon.entregar")
 
     def leer(self, agent_id: str) -> Mensaje | None:
