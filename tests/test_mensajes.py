@@ -1,8 +1,8 @@
-"""Buzón y mensajes.  [Dueño: Mario]"""
+"""Buzón y mensajes.  [Dueño: Emilio]"""
 
 import pytest
 
-pendiente = pytest.mark.skip(reason="pendiente — Mario")
+pendiente = pytest.mark.skip(reason="pendiente — Emilio")
 
 
 @pendiente

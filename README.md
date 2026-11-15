@@ -54,9 +54,9 @@ Cada archivo tiene un solo dueño. El detalle de tareas, dependencias y cronogra
 |---|---|---|
 | Carlos | `branch-carlos` | `config.py`, `mundo.py`, `simulacion.py` |
 | Oswaldo | `branch-oswaldo` | `rutas.py`, `carro.py`, `tests/test_rutas.py`, `tests/test_carro.py` |
-| Mario | `branch-mario` | `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test_cosechadora.py` |
+| Emilio | `branch-emilio` | `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test_cosechadora.py` |
 | Joel | `branch-joel` | `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/test_telemetria.py` |
-| Emilio | `branch-emilio` | `viz/viewer.py`, `cli.py`, `tests/test_viewer.py` |
+| Giovanni | `branch-giovanni` | `viz/viewer.py`, `cli.py`, `tests/test_viewer.py` |
 | Ilan | `branch-ilan` | `tests/test_mundo.py`, `tests/test_config.py`, `tests/test_integracion.py`, `.github/`, `scripts/`, `README.md` |
 
 Cada archivo tiene en su docstring la sección de la especificación que implementa. Los tests pendientes están marcados con `skip`: quita el decorador al implementar cada uno.

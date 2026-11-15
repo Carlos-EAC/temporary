@@ -8,11 +8,11 @@ Reparto para 6 personas, dependencias, cronograma y flujo de git. Complementa a 
 
 | Persona | Rama | Archivos que le pertenecen | Necesita para arrancar | Desbloquea a |
 |---|---|---|---|---|
-| **Carlos** (Mundo) | `branch-carlos` | `config.py`, `mundo.py`, `simulacion.py` | Nada para arrancar. `simulacion.py` necesita al final los agentes, el buzón y `TraceBuilder` | Mario, Oswaldo, Ilan |
-| **Oswaldo** (Rutas) | `branch-oswaldo` | `rutas.py`, `carro.py`, `tests/test_rutas.py`, `tests/test_carro.py` | Nada para `rutas.py`. `carro.py` necesita el buzón (Mario) y el layout (Carlos), o fakes | Carlos, Mario |
-| **Mario** (Coordinación) | `branch-mario` | `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test_cosechadora.py` | Nada para el buzón. `cosechadora.py` necesita el layout (Carlos) y `rutas.py` (Oswaldo), o fakes | Oswaldo, Carlos |
-| **Joel** (Datos) | `branch-joel` | `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/test_telemetria.py` | Nada. Es quien destraba al visor con el fixture | Emilio, Carlos |
-| **Emilio** (Interfaz) | `branch-emilio` | `viz/viewer.py`, `cli.py`, `tests/test_viewer.py` | El fixture de Joel (para el visor) y `simulacion.py` (para la CLI) | — |
+| **Carlos** (Mundo) | `branch-carlos` | `config.py`, `mundo.py`, `simulacion.py` | Nada para arrancar. `simulacion.py` necesita al final los agentes, el buzón y `TraceBuilder` | Emilio, Oswaldo, Ilan |
+| **Oswaldo** (Rutas) | `branch-oswaldo` | `rutas.py`, `carro.py`, `tests/test_rutas.py`, `tests/test_carro.py` | Nada para `rutas.py`. `carro.py` necesita el buzón (Emilio) y el layout (Carlos), o fakes | Carlos, Emilio |
+| **Emilio** (Coordinación) | `branch-emilio` | `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test_cosechadora.py` | Nada para el buzón. `cosechadora.py` necesita el layout (Carlos) y `rutas.py` (Oswaldo), o fakes | Oswaldo, Carlos |
+| **Joel** (Datos) | `branch-joel` | `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/test_telemetria.py` | Nada. Es quien destraba al visor con el fixture | Giovanni, Carlos |
+| **Giovanni** (Interfaz) | `branch-giovanni` | `viz/viewer.py`, `cli.py`, `tests/test_viewer.py` | El fixture de Joel (para el visor) y `simulacion.py` (para la CLI) | — |
 | **Ilan** (Calidad) | `branch-ilan` | `tests/test_mundo.py`, `tests/test_config.py`, `tests/test_integracion.py`, `.github/`, `scripts/`, `README.md`, `docs/autoevaluacion.md` | Nada para escribir los tests (salen de la especificación) | Todos (CI y revisión) |
 
 **Regla de oro:** cada archivo tiene un solo dueño. Si necesitas un cambio en un archivo ajeno, se lo pides al dueño (por chat o con un issue); no lo editas tú.
@@ -66,7 +66,7 @@ bfs(origen, destino, ancho, alto, bloqueadas) -> list[Celda] | None   # sin orig
 elegir_celda_objetivo(origen, objetivo, ancho, alto, bloqueadas, evitar) -> Celda | None
 siguiente_paso(pos, ruta, destino, ancho, alto, ocupadas, bloqueadas_fijas) -> (Celda | None, list[Celda])
 
-# --- Mario: mensajes.py ---
+# --- Emilio: mensajes.py ---
 buzon.enviar(msg) -> int                      # asigna id; se entrega en tick+1
 buzon.entregar(tick)                          # al inicio de cada tick
 buzon.leer(agent_id) -> Mensaje | None        # FIFO
@@ -129,7 +129,7 @@ Archivos: `config.py`, `mundo.py`, `simulacion.py`.
 1. **Config.** `cargar_config(ruta)` con las validaciones del §3 de la especificación, lanzando `ValueError` con mensaje claro.
    *Listo cuando:* los tres JSON cargan y `test_config_invalida` de Ilan pasa.
 2. ⚡ **Layout del mundo.** `Mundo.__init__`, `registrar`, `base_de`, `bodega`, `ancho`, `alto`, casillas con `n` y `m` genéricos (no escribir `(1,0)` ni `(2,0)` a mano), `bloqueadas_fijas`, `ocupadas`, `posicion`, `estado_de`.
-   *Listo cuando:* `test_casillas_de_inicio` pasa. Súbelo a `development` cuanto antes: Mario y Oswaldo lo necesitan.
+   *Listo cuando:* `test_casillas_de_inicio` pasa. Súbelo a `development` cuanto antes: Emilio y Oswaldo lo necesitan.
 3. ⚡ **Serpentina** y `duracion_ticks`.
    *Listo cuando:* `test_serpentina_cubre_todo_el_campo` y `test_duracion_ticks` pasan.
 4. **Grano.** `cosechar` (R8), `transferir` (R5 y R6), `depositar`, `grano_cosechado`, `grano_total`, `entregado`.
@@ -144,9 +144,9 @@ Archivos: `config.py`, `mundo.py`, `simulacion.py`.
 
 Archivos: `rutas.py`, `carro.py`, `tests/test_rutas.py`, `tests/test_carro.py`.
 
-1. ⚡ **`rutas.py`.** `vecinos` y `bfs` primero (los necesitan Carlos y Mario), luego `elegir_celda_objetivo` y `siguiente_paso` (§4.2 y §5.2). Funciones puras, sin importar `Mundo`.
+1. ⚡ **`rutas.py`.** `vecinos` y `bfs` primero (los necesitan Carlos y Emilio), luego `elegir_celda_objetivo` y `siguiente_paso` (§4.2 y §5.2). Funciones puras, sin importar `Mundo`.
    *Listo cuando:* `tests/test_rutas.py` pasa completo, con el determinismo verificado.
-2. **Fakes para tus pruebas.** Un `Mundo` falso y un `Buzon` falso mínimos dentro de `test_carro.py`. Así avanzas sin esperar a Carlos ni a Mario.
+2. **Fakes para tus pruebas.** Un `Mundo` falso y un `Buzon` falso mínimos dentro de `test_carro.py`. Así avanzas sin esperar a Carlos ni a Emilio.
 3. **`carro.py`.** La tabla de estados del §5.2 completa: `EN_BASE` revisa su fila solo ahí; BFS con celdas ocupadas bloqueadas; celda objetivo según `elegir_celda_objetivo`; lectura de `cantidad` al recibir `TRANSFERENCIA_TERMINADA`; descarga con `duracion_ticks`.
    *Listo cuando:* `tests/test_carro.py` pasa con los fakes.
 4. **`registro()` del carro** con `intencion.accion` del vocabulario del §3.3.
@@ -154,7 +154,7 @@ Archivos: `rutas.py`, `carro.py`, `tests/test_rutas.py`, `tests/test_carro.py`.
 
 **Respaldo:** Carlos.
 
-### Mario — Mensajería y cosechadora (`branch-mario`)
+### Emilio — Mensajería y cosechadora (`branch-emilio`)
 
 Archivos: `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test_cosechadora.py`.
 
@@ -172,9 +172,9 @@ Archivos: `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test
 
 Archivos: `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/test_telemetria.py`.
 
-1. ⚡ **Fixture de ejemplo (viernes noche o sábado temprano).** Un script `tools/generar_trace_ejemplo.py` que genere `tests/fixtures/trace_ejemplo.json`: unos 60 ticks inventados pero coherentes con la especificación (los dos agentes en sus bases, un ciclo completo, mensajes con `id`, checksums bien calculados). Con esto Emilio dibuja el visor sin esperar la simulación, y tú desarrollas gráficas y métricas.
-   *Listo cuando:* `verificar_checksums` es `True` sobre el fixture y Emilio lo puede abrir.
-2. ⚡ **`TraceBuilder`, `escribir_trace` (byte a byte reproducible), `cargar_trace`, `verificar_checksums`.** Carlos usa `TraceBuilder` en `simulacion.py`.
+1. ⚡ **Fixture de ejemplo (viernes noche o sábado temprano).** Un script `tools/generar_trace_ejemplo.py` que genere `tests/fixtures/trace_ejemplo.json`: unos 60 ticks inventados pero coherentes con la especificación (los dos agentes en sus bases, un ciclo completo, mensajes con `id`, checksums bien calculados). El script es **determinista (sin aleatoriedad)** y se versionan tanto el script como el JSON que genera. Con esto Giovanni dibuja el visor sin esperar la simulación, y tú desarrollas gráficas y métricas.
+   *Listo cuando:* `verificar_checksums` es `True` sobre el fixture y Giovanni lo puede abrir.
+2. ⚡ **Telemetría: `TraceBuilder`, `escribir_trace` (byte a byte reproducible), `cargar_trace`, `verificar_checksums`.** La telemetría es el registro automático de lo que ocurre en la simulación (el `trace.json`) y las funciones que lo arman, escriben y verifican. Carlos usa `TraceBuilder` en `simulacion.py`.
    *Listo cuando:* `tests/test_telemetria.py` pasa.
 3. **`calcular_metricas(trace)`** del §6.2, **solo desde el log**. Sugerencias de cálculo:
    - `tiempo_ocioso_cosechadora`: snapshots con estado `LLENA_ESPERANDO`.
@@ -188,9 +188,9 @@ Archivos: `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/t
 4. **`viz/plots.py`**: las cuatro gráficas del §7.2, más una tabla resumen (CSV y Markdown) que compare los tres escenarios.
 5. **Cuando llegue la simulación real** (domingo): corre los tres escenarios, revisa que las métricas tengan sentido y prepara los resultados de la entrega.
 
-**Respaldo:** Emilio.
+**Respaldo:** Giovanni.
 
-### Emilio — Interfaz (`branch-emilio`)
+### Giovanni — Interfaz (`branch-giovanni`)
 
 Archivos: `viz/viewer.py`, `cli.py`, `tests/test_viewer.py`.
 
@@ -224,15 +224,15 @@ Archivos: `tests/test_mundo.py`, `tests/test_config.py`, `tests/test_integracion
 
 ```mermaid
 flowchart LR
-  J1["Joel: fixture de ejemplo"] --> E1["Emilio: visor"]
+  J1["Joel: fixture de ejemplo"] --> E1["Giovanni: visor"]
   J1 --> J3["Joel: metricas y plots"]
   O1["Oswaldo: rutas.py"] --> C5["Carlos: delegar rutas en Mundo"]
   O1 --> O3["Oswaldo: carro.py"]
-  O1 --> M3["Mario: cosechadora.py"]
+  O1 --> M3["Emilio: cosechadora.py"]
   C2["Carlos: config, layout, serpentina"] --> M3
   C2 --> O3
   C2 --> I2["Ilan: activar tests de mundo"]
-  M1["Mario: Buzon"] --> O3
+  M1["Emilio: Buzon"] --> O3
   M1 --> M3
   M1 --> C6["Carlos: simulacion.py"]
   J2["Joel: TraceBuilder"] --> C6
@@ -240,7 +240,7 @@ flowchart LR
   O3 --> C6
   C6 --> INT["Integracion: corrida completa"]
   INT --> J5["Joel: metricas con log real"]
-  INT --> E3["Emilio: CLI y visor con log real"]
+  INT --> E3["Giovanni: CLI y visor con log real"]
   INT --> I3["Ilan: activar tests de integracion"]
 ```
 
@@ -250,16 +250,16 @@ flowchart LR
 |---|---|---|
 | Carlos | Config y layout | Solo usa la especificación |
 | Oswaldo | `rutas.py` | Son funciones puras |
-| Mario | `Buzon` | No depende de nada |
+| Emilio | `Buzon` | No depende de nada |
 | Joel | El fixture de ejemplo | Solo usa el formato del log |
-| Emilio | Ventana y grid del visor con datos de mano | No necesita el log todavía |
+| Giovanni | Ventana y grid del visor con datos de mano | No necesita el log todavía |
 | Ilan | CI y tests | Salen de la especificación |
 
 ### Quién espera a quién (y con qué se desatora)
 
 | Tarea que espera | Espera a | Mientras tanto |
 |---|---|---|
-| `carro.py` completo | `Buzon` (Mario) y layout (Carlos) | Fakes dentro de `test_carro.py` |
+| `carro.py` completo | `Buzon` (Emilio) y layout (Carlos) | Fakes dentro de `test_carro.py` |
 | `cosechadora.py` completa | Layout (Carlos) y `rutas.py` (Oswaldo) | Fakes dentro de `test_cosechadora.py` |
 | Visor completo | Fixture de Joel | Datos de mano |
 | `simulacion.ejecutar` | Agentes, buzón y `TraceBuilder` | Agentes falsos que terminen rápido |
@@ -276,18 +276,18 @@ Hoy es viernes 13; la entrega es el lunes 16. Las horas son orientativas; lo imp
 |---|---|---|
 | **Viernes noche** | Reunión de 45 min (§3). Se hace commit y push de los cambios del esqueleto a `main` y `development`; cada quien crea o actualiza su rama | Todos |
 | Viernes noche | CI funcionando; fixture de Joel (puede pasar al sábado temprano); `rutas.py` con `vecinos` y `bfs` | Ilan, Joel, Oswaldo |
-| **Sábado mañana** | Buzón, config, layout del mundo y `bfs` en `development` | Mario, Carlos, Oswaldo |
-| Sábado mediodía | Serpentina, `duracion_ticks`, fixture de Joel disponible; Emilio ya dibuja el fixture | Carlos, Joel, Emilio |
-| **Sábado tarde** | `cosechadora.py` y `carro.py` pasan sus tests con fakes; funciones de grano del mundo listas | Mario, Oswaldo, Carlos |
-| **Sábado noche** | **Hito 1:** una corrida de extremo a extremo, aunque sea fea (`ejecutar` con los agentes reales) | Carlos con Mario y Oswaldo |
-| **Domingo mañana** | `calcular_metricas` y `plots` sobre el log real; CLI funcionando; Ilan activa los tests de integración y corrige lo que falle | Joel, Emilio, Ilan |
+| **Sábado mañana** | Buzón, config, layout del mundo y `bfs` en `development` | Emilio, Carlos, Oswaldo |
+| Sábado mediodía | Serpentina, `duracion_ticks`, fixture de Joel disponible; Giovanni ya dibuja el fixture | Carlos, Joel, Giovanni |
+| **Sábado tarde** | `cosechadora.py` y `carro.py` pasan sus tests con fakes; funciones de grano del mundo listas | Emilio, Oswaldo, Carlos |
+| **Sábado noche** | **Hito 1:** una corrida de extremo a extremo, aunque sea fea (`ejecutar` con los agentes reales) | Carlos con Emilio y Oswaldo |
+| **Domingo mañana** | `calcular_metricas` y `plots` sobre el log real; CLI funcionando; Ilan activa los tests de integración y corrige lo que falle | Joel, Giovanni, Ilan |
 | Domingo tarde | Visor con el log real; gráficas de los tres escenarios; arreglo de bugs que salgan de los tests | Todos |
 | **Domingo noche** | **Congelamiento:** solo se aceptan correcciones de errores, no funciones nuevas | Todos |
 | **Lunes mañana** | `development` pasa CI; `verificar_instalacion.sh` en entorno limpio; resultados de los tres escenarios; merge `development` → `main` con etiqueta `v0.1-entrega1` | Ilan y Joel |
 
 ### Qué se recorta si el tiempo aprieta (en este orden)
 
-1. La nota de Unity de Emilio.
+1. La nota de Unity de Giovanni.
 2. Funciones extra del visor (estela, velocidad ajustable); queda el reproductor básico.
 3. Las gráficas 3 y 4 de Joel (quedan la 1 y la 2, más la tabla de métricas).
 4. Escenarios B y C: se entrega con el A completo y los otros dos como configuración sin analizar.
@@ -304,7 +304,7 @@ Hoy es viernes 13; la entrega es el lunes 16. Las horas son orientativas; lo imp
 |---|---|---|
 | `main` | Lo que se entrega. Solo se toca el lunes | Se actualiza por PR desde `development` |
 | `development` | Integración: aquí se junta el trabajo de todos | Solo por PR desde las ramas personales |
-| `branch-carlos`, `branch-oswaldo`, `branch-mario`, `branch-joel`, `branch-emilio`, `branch-ilan` | Una por persona | Su dueño |
+| `branch-carlos`, `branch-oswaldo`, `branch-emilio`, `branch-joel`, `branch-giovanni`, `branch-ilan` | Una por persona | Su dueño |
 
 ### 7.2 Diagrama de versiones (ejemplo de cómo se verá el fin de semana)
 
@@ -321,9 +321,9 @@ gitGraph
    checkout development
    branch branch-oswaldo
    checkout development
-   branch branch-mario
-   checkout development
    branch branch-emilio
+   checkout development
+   branch branch-giovanni
    checkout development
    branch branch-ilan
    checkout branch-ilan
@@ -338,22 +338,22 @@ gitGraph
    commit id: "vecinos y bfs"
    checkout development
    merge branch-oswaldo id: "PR: rutas basicas"
-   checkout branch-mario
+   checkout branch-emilio
    commit id: "Buzon FIFO con ids"
    checkout development
-   merge branch-mario id: "PR: buzon"
+   merge branch-emilio id: "PR: buzon"
    checkout branch-carlos
    commit id: "Layout y serpentina"
    checkout development
    merge branch-carlos id: "PR: mundo base"
-   checkout branch-mario
-   merge development id: "Mario trae lo nuevo"
+   checkout branch-emilio
+   merge development id: "Emilio trae lo nuevo"
    commit id: "cosechadora"
    checkout branch-oswaldo
    merge development id: "Oswaldo trae lo nuevo"
    commit id: "carro"
    checkout development
-   merge branch-mario id: "PR: cosechadora"
+   merge branch-emilio id: "PR: cosechadora"
    merge branch-oswaldo id: "PR: carro"
    checkout branch-carlos
    merge development id: "Carlos trae agentes"
@@ -363,12 +363,12 @@ gitGraph
    checkout branch-joel
    merge development id: "Joel trae simulacion"
    commit id: "metricas y plots"
-   checkout branch-emilio
-   merge development id: "Emilio trae simulacion"
+   checkout branch-giovanni
+   merge development id: "Giovanni trae simulacion"
    commit id: "visor y CLI"
    checkout development
    merge branch-joel id: "PR: metricas"
-   merge branch-emilio id: "PR: visor y CLI"
+   merge branch-giovanni id: "PR: visor y CLI"
    checkout main
    merge development tag: "v0.1-entrega1"
 ```
@@ -402,11 +402,11 @@ git push origin branch-TU-NOMBRE
 
    | PR de | Lo revisa |
    |---|---|
-   | Carlos | Mario |
+   | Carlos | Emilio |
    | Oswaldo | Carlos |
-   | Mario | Oswaldo |
-   | Joel | Emilio |
-   | Emilio | Joel |
+   | Emilio | Oswaldo |
+   | Joel | Giovanni |
+   | Giovanni | Joel |
    | Ilan | Joel |
 
    En los PR grandes (agentes, simulación) Ilan hace además una pasada de conformidad con la especificación.
@@ -449,7 +449,7 @@ Antes de pedir revisión, marca todo:
 
 | Riesgo | Señal | Qué hacer |
 |---|---|---|
-| Integración tardía | A las 24 h nada corre junta | Hito 1 del sábado noche: una corrida fea pero completa. Si Mario u Oswaldo no llegan, Carlos usa agentes falsos para validar el bucle |
+| Integración tardía | A las 24 h nada corre junta | Hito 1 del sábado noche: una corrida fea pero completa. Si Emilio u Oswaldo no llegan, Carlos usa agentes falsos para validar el bucle |
 | Se atrasa una persona | Su PR no llega a la hora del hito | Su respaldo (§4) toma la tarea; se avisa en el chat |
 | Interfaz que cambia a mitad | Alguien cambia una firma | Regla 6 del §7.4: avisar antes y anotar |
 | Las métricas no coinciden con lo esperado | Valores raros en el fixture o en la corrida | Joel y Ilan verifican a mano un ciclo corto; se corrige la definición, no se ajustan los datos |
