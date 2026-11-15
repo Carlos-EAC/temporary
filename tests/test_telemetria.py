@@ -19,6 +19,7 @@ from harvest_sim.telemetria import (
     con_checksum,
     escribir_trace,
     reconstruir,
+    series_temporales,
     verificar_checksums,
 )
 
@@ -370,6 +371,9 @@ ORDEN_METRICAS = [
     "tiempo_ocioso_cosechadora", "tiempo_transfiriendo", "tick_fin_cosecha", "tiempo_completacion",
     "distancia_cosechadora", "distancia_carro", "distancia_total", "colisiones", "ticks_bloqueados",
     "num_ciclos", "espera_por_ciclo", "utilizacion_carro", "grano_total_entregado",
+    "porcentaje_ocioso", "ticks_por_estado", "mensajes_enviados", "distancia_cosechadora_carro_promedio",
+    "distancia_cosechadora_carro_minima", "distancia_cosechadora_carro_maxima", "grano_cosechado_total",
+    "grano_esperado_total", "porcentaje_entregado",
 ]
 
 
@@ -382,7 +386,7 @@ def test_metricas_desde_el_log():
     original = copy.deepcopy(trace)
     metricas = calcular_metricas(trace)
     assert list(metricas) == ORDEN_METRICAS
-    assert metricas == {
+    assert {k: metricas[k] for k in ORDEN_METRICAS[:13]} == {
         "tiempo_ocioso_cosechadora": 23,
         "tiempo_transfiriendo": 8,
         "tick_fin_cosecha": 44,
@@ -397,6 +401,22 @@ def test_metricas_desde_el_log():
         "utilizacion_carro": 0.8,
         "grano_total_entregado": 8,
     }
+    # una métrica por variable en juego, calculadas a mano sobre la misma línea de tiempo
+    assert metricas["porcentaje_ocioso"] == 46.0  # 23 de 50 ticks
+    assert metricas["ticks_por_estado"] == {
+        H: {"EN_BASE": 1, "YENDO_A_CAMPO": 3, "COSECHANDO": 9, "LLENA_ESPERANDO": 23, "TRANSFIRIENDO": 8,
+            "REGRESANDO_A_BASE": 4, "FIN": 2},
+        C: {"EN_BASE": 10, "YENDO_A_COSECHADORA": 7, "ESPERANDO_TRANSFERENCIA": 14, "YENDO_A_BODEGA": 8,
+            "DESCARGANDO": 8, "REGRESANDO_A_BASE": 3},
+    }
+    assert metricas["mensajes_enviados"] == {"LLENA": 3, "TRANSFERENCIA_TERMINADA": 3}
+    assert (metricas["grano_cosechado_total"], metricas["grano_esperado_total"],
+            metricas["porcentaje_entregado"]) == (8, 8, 100.0)
+    # distancia cosechadora-carro: las bases son vecinas (1 celda) y se cumple lo que dicen las series
+    distancias = series_temporales(trace)["distancia_cosechadora_carro"]
+    assert metricas["distancia_cosechadora_carro_minima"] == min(distancias) == 1
+    assert metricas["distancia_cosechadora_carro_maxima"] == max(distancias)
+    assert metricas["distancia_cosechadora_carro_promedio"] == round(sum(distancias) / 50, 4)
     assert trace == original  # no modifica el trace
 
 
@@ -405,7 +425,8 @@ def test_metricas_del_guion_de_20_ticks():
     un bloqueo de la cosechadora, un depósito de 4; la cosechadora avanza 7 celdas y el carro 5; el carro
     sale de EN_BASE en el tick 8, así que 13 de 21 ticks."""
     trace, _ = construir_trace()
-    assert calcular_metricas(trace) == {
+    metricas = calcular_metricas(trace)
+    assert {k: metricas[k] for k in ORDEN_METRICAS[:13]} == {
         "tiempo_ocioso_cosechadora": 4,
         "tiempo_transfiriendo": 2,
         "tick_fin_cosecha": 13,
@@ -420,6 +441,48 @@ def test_metricas_del_guion_de_20_ticks():
         "utilizacion_carro": 0.619,
         "grano_total_entregado": 4,
     }
+    assert metricas["porcentaje_ocioso"] == 19.05  # 4 de 21 ticks
+    assert metricas["ticks_por_estado"] == {
+        H: {"EN_BASE": 1, "YENDO_A_CAMPO": 3, "COSECHANDO": 11, "LLENA_ESPERANDO": 4, "TRANSFIRIENDO": 2},
+        C: {"EN_BASE": 8, "YENDO_A_COSECHADORA": 2, "ESPERANDO_TRANSFERENCIA": 4, "YENDO_A_BODEGA": 3,
+            "DESCARGANDO": 2, "REGRESANDO_A_BASE": 2},
+    }
+    assert metricas["mensajes_enviados"] == {"LLENA": 1, "TRANSFERENCIA_TERMINADA": 1}
+    # distancias Manhattan por tick, 51 en total en 21 ticks: promedio 2.4286, mínima 1 y máxima 5
+    assert metricas["distancia_cosechadora_carro_promedio"] == 2.4286
+    assert (metricas["distancia_cosechadora_carro_minima"], metricas["distancia_cosechadora_carro_maxima"]) == (1, 5)
+    # campo de 4 x 2 = 8 de grano; se cosecharon 5 y llegaron 4 a la bodega: 50 %
+    assert (metricas["grano_cosechado_total"], metricas["grano_esperado_total"],
+            metricas["porcentaje_entregado"]) == (5, 8, 50.0)
+
+
+def test_series_temporales_del_guion():
+    """Series por tick del guion de 20 ticks, calculadas a mano: el ocioso acumulado sube 1 por tick entre
+    los ticks 7 y 10 y queda plano; la distancia es Manhattan; el grano entra a la bodega en el tick 19."""
+    trace, _ = construir_trace()
+    s = series_temporales(trace)
+    assert s["tick"] == list(range(21))
+    assert s["ocioso_acumulado"] == [0] * 7 + [1, 2, 3, 4] + [4] * 10
+    assert s["distancia_cosechadora_carro"] == [1, 1, 2, 1, 2, 1, 2, 3, 3, 2, 1, 1, 1, 1, 2, 3, 4, 5, 5, 5, 5]
+    assert s["carga_cosechadora"] == [0] * 4 + [1, 2, 3] + [4] * 6 + [0] + [1] * 7
+    assert s["carga_carro"] == [0] * 13 + [4] * 6 + [0] * 2
+    assert s["cosechado_acumulado"] == [0] * 4 + [1, 2, 3, 4] + [4] * 6 + [5] * 7
+    assert s["entregado_en_bodega"] == [0] * 19 + [4, 4]
+    assert s["bloqueos_acumulados"] == [0] * 17 + [1] * 4
+    # coherencia con las métricas
+    m = calcular_metricas(trace)
+    assert s["ocioso_acumulado"][-1] == m["tiempo_ocioso_cosechadora"]
+    assert s["entregado_en_bodega"][-1] == m["grano_total_entregado"]
+
+
+def test_series_del_fixture_son_coherentes_con_las_metricas():
+    trace = cargar_trace(FIXTURE)
+    s, m = series_temporales(trace), calcular_metricas(trace)
+    assert all(len(v) == 50 for v in s.values())
+    assert s["ocioso_acumulado"][-1] == 23 == m["tiempo_ocioso_cosechadora"]
+    assert s["entregado_en_bodega"][-1] == s["cosechado_acumulado"][-1] == 8
+    assert s["bloqueos_acumulados"][-1] == 2
+    assert all(b >= a for a, b in zip(s["ocioso_acumulado"], s["ocioso_acumulado"][1:]))  # nunca baja
 
 
 def test_metricas_distancia_ignora_cambios_de_orientacion():

@@ -204,8 +204,50 @@ def escribir_trace(trace: dict, ruta: str | Path) -> None:
         f.write(texto)
 
 
+def _manhattan(a: tuple[int, int], b: tuple[int, int]) -> int:
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+
+def _celda(estado: dict, agente: str) -> tuple[int, int]:
+    p = estado["agentes"][agente]["pose"]
+    return (p["x"], p["y"])
+
+
+def series_temporales(trace: dict) -> dict[str, list]:
+    """Series por tick (0..meta.total_ticks) calculadas desde el log, para graficar la evolución.
+
+    Cada serie es una lista con un valor por tick (incluidos los ticks que no aparecen en el archivo):
+    - tick: 0..total_ticks.
+    - ocioso_acumulado: ticks acumulados (hasta ese tick, inclusive) con la cosechadora en LLENA_ESPERANDO.
+    - distancia_cosechadora_carro: distancia Manhattan (en celdas) entre la primera cosechadora y el primer carro.
+    - carga_cosechadora, carga_carro: unidades que lleva cada uno.
+    - cosechado_acumulado: grano cosechado hasta ese tick (celdas cosechadas por grano_por_celda).
+    - entregado_en_bodega: grano acumulado en la bodega.
+    - bloqueos_acumulados: eventos BLOQUEO hasta ese tick.
+    """
+    cosechadoras = [a["id"] for a in trace["agentes"] if a["tipo"] == "cosechadora"]
+    carros = [a["id"] for a in trace["agentes"] if a["tipo"] == "carro"]
+    grano = trace["mundo"].get("grano_por_celda", 1)
+    h, c = cosechadoras[0], carros[0]
+    serie = {k: [] for k in ("tick", "ocioso_acumulado", "distancia_cosechadora_carro", "carga_cosechadora",
+                             "carga_carro", "cosechado_acumulado", "entregado_en_bodega", "bloqueos_acumulados")}
+    ocioso = bloqueos = 0
+    for e in reconstruir(trace):
+        ocioso += sum(1 for a in cosechadoras if e["agentes"][a]["estado"] == "LLENA_ESPERANDO")
+        bloqueos += sum(1 for ev in e["eventos"] if ev["tipo"] == "BLOQUEO")
+        serie["tick"].append(e["tick"])
+        serie["ocioso_acumulado"].append(ocioso)
+        serie["distancia_cosechadora_carro"].append(_manhattan(_celda(e, h), _celda(e, c)))
+        serie["carga_cosechadora"].append(e["agentes"][h]["carga"])
+        serie["carga_carro"].append(e["agentes"][c]["carga"])
+        serie["cosechado_acumulado"].append(len(e["celdas_cosechadas"]) * grano)
+        serie["entregado_en_bodega"].append(e["entregado_total"])
+        serie["bloqueos_acumulados"].append(bloqueos)
+    return serie
+
+
 def calcular_metricas(trace: dict) -> dict:
-    """Calcula las métricas del §6.2 A PARTIR DEL LOG (usa `reconstruir`; no modifica el trace).
+    """Calcula las métricas A PARTIR DEL LOG (usa `reconstruir`; no modifica el trace).
 
     Definiciones (registradas en docs/decisiones.md):
     - Los ticks que se cuentan son 0..meta.total_ticks, ambos incluidos.
@@ -220,15 +262,22 @@ def calcular_metricas(trace: dict) -> dict:
     - espera_por_ciclo: largo de cada racha consecutiva de LLENA_ESPERANDO.
     - utilizacion_carro: ticks con el carro fuera de EN_BASE entre el total de ticks (4 decimales).
     - grano_total_entregado: entregado_total al final del log.
+    Una métrica por cada variable en juego (se agregan al final, en este orden):
+    - porcentaje_ocioso: ticks ociosos entre los ticks totales, en % (2 decimales).
+    - ticks_por_estado: ticks que cada agente pasó en cada estado ({agent_id: {estado: n}}).
+    - mensajes_enviados: mensajes enviados por tipo ({tipo_mensaje: n}).
+    - distancia_cosechadora_carro_promedio / _minima / _maxima: sobre la distancia Manhattan de cada tick.
+    - grano_cosechado_total, grano_esperado_total (ancho x (alto - 1) x grano_por_celda) y
+      porcentaje_entregado (entregado / esperado, en %, 2 decimales; None si no se conoce el total esperado).
     """
     cosechadoras = [a["id"] for a in trace["agentes"] if a["tipo"] == "cosechadora"]
     carros = [a["id"] for a in trace["agentes"] if a["tipo"] == "carro"]
     todos = [a["id"] for a in trace["agentes"]]
     estados = list(reconstruir(trace))
+    mundo = trace["mundo"]
 
     def celda(e, a):
-        p = e["agentes"][a]["pose"]
-        return (p["x"], p["y"])
+        return _celda(e, a)
 
     def contar_estado(estado, ids):
         return sum(1 for e in estados for a in ids if e["agentes"][a]["estado"] == estado)
@@ -263,11 +312,27 @@ def calcular_metricas(trace: dict) -> dict:
     terminadas = [t for t, ev in eventos
                   if ev["tipo"] == "MENSAJE_ENVIADO" and ev["tipo_mensaje"] == "TRANSFERENCIA_TERMINADA"]
     dist_h, dist_c = distancia(cosechadoras), distancia(carros)
-    activos = contar_estado("EN_BASE", carros)
-    utilizacion = 0.0 if not carros else round(1 - activos / (len(estados) * len(carros)), 4)
+    fuera_de_base = contar_estado("EN_BASE", carros)
+    utilizacion = 0.0 if not carros else round(1 - fuera_de_base / (len(estados) * len(carros)), 4)
+    ocioso = contar_estado("LLENA_ESPERANDO", cosechadoras)
+    entregado = estados[-1]["entregado_total"]
+    grano = mundo.get("grano_por_celda", 1)
+    esperado = mundo["ancho"] * (mundo["alto"] - 1) * grano if "ancho" in mundo and "alto" in mundo else None
+
+    ticks_por_estado = {}
+    for a in todos:
+        cuenta = {}
+        for e in estados:
+            cuenta[e["agentes"][a]["estado"]] = cuenta.get(e["agentes"][a]["estado"], 0) + 1
+        ticks_por_estado[a] = cuenta
+    mensajes = {}
+    for _, ev in eventos:
+        if ev["tipo"] == "MENSAJE_ENVIADO":
+            mensajes[ev["tipo_mensaje"]] = mensajes.get(ev["tipo_mensaje"], 0) + 1
+    distancias = series_temporales(trace)["distancia_cosechadora_carro"]
 
     return {
-        "tiempo_ocioso_cosechadora": contar_estado("LLENA_ESPERANDO", cosechadoras),
+        "tiempo_ocioso_cosechadora": ocioso,
         "tiempo_transfiriendo": contar_estado("TRANSFIRIENDO", cosechadoras),
         "tick_fin_cosecha": max(terminadas) if terminadas else None,
         "tiempo_completacion": trace["meta"]["total_ticks"],
@@ -281,5 +346,14 @@ def calcular_metricas(trace: dict) -> dict:
                           if ev["tipo"] == "MENSAJE_ENVIADO" and ev["tipo_mensaje"] == "LLENA"),
         "espera_por_ciclo": espera_por_ciclo,
         "utilizacion_carro": utilizacion,
-        "grano_total_entregado": estados[-1]["entregado_total"],
+        "grano_total_entregado": entregado,
+        "porcentaje_ocioso": round(100 * ocioso / (len(estados) * len(cosechadoras)), 2) if cosechadoras else 0.0,
+        "ticks_por_estado": ticks_por_estado,
+        "mensajes_enviados": mensajes,
+        "distancia_cosechadora_carro_promedio": round(sum(distancias) / len(distancias), 4),
+        "distancia_cosechadora_carro_minima": min(distancias),
+        "distancia_cosechadora_carro_maxima": max(distancias),
+        "grano_cosechado_total": len(estados[-1]["celdas_cosechadas"]) * grano,
+        "grano_esperado_total": esperado,
+        "porcentaje_entregado": round(100 * entregado / esperado, 2) if esperado else None,
     }
