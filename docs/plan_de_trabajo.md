@@ -58,6 +58,9 @@ mundo.cosechar(agent_id, celda) -> int        # suma a agente.carga; R8
 mundo.transferir(de, a, cantidad) -> int      # δ (R6); lanza ValueError si no son vecinos (R5)
 mundo.depositar(agent_id) -> int              # carga del carro -> entregado
 mundo.grano_cosechado() -> int
+mundo.tick_actual                             # lo fija simulacion.py al inicio de cada tick
+mundo.descripcion() -> dict                   # ancho, alto, bodega, bases, grano_por_celda (va en trace["mundo"])
+mundo.cambios() -> list[dict]                 # CELDA_COSECHADA y DEPOSITO, en orden (va en trace["cambios"])
 duracion_ticks(cantidad, tasa) -> int         # ceil(cantidad / tasa), mínimo 1
 
 # --- Oswaldo: rutas.py (funciones puras) ---
@@ -72,11 +75,12 @@ buzon.entregar(tick)                          # al inicio de cada tick
 buzon.leer(agent_id) -> Mensaje | None        # FIFO
 buzon.hay_pendientes(agent_id) -> bool
 buzon.registro() -> list[dict]                # id, tipo, emisor, receptor, tick_envio, tick_entrega, payload
+                                              # además imprime cada envío y entrega con logging (§6.3 de la especificación)
 
 # --- Joel: telemetria.py ---
 TraceBuilder(config_dict)
 builder.agregar_tick(tick, registros)         # registros SIN checksum; el builder lo agrega
-builder.construir(mensajes, metricas=None) -> dict
+builder.construir(mundo, cambios, mensajes, metricas=None) -> dict   # mundo = mundo.descripcion(); cambios = mundo.cambios()
 calcular_metricas(trace) -> dict              # desde el log
 cargar_trace(ruta) / escribir_trace(trace, ruta) / verificar_checksums(trace) -> bool
 
@@ -132,10 +136,10 @@ Archivos: `config.py`, `mundo.py`, `simulacion.py`.
    *Listo cuando:* `test_casillas_de_inicio` pasa. Súbelo a `development` cuanto antes: Emilio y Oswaldo lo necesitan.
 3. ⚡ **Serpentina** y `duracion_ticks`.
    *Listo cuando:* `test_serpentina_cubre_todo_el_campo` y `test_duracion_ticks` pasan.
-4. **Grano.** `cosechar` (R8), `transferir` (R5 y R6), `depositar`, `grano_cosechado`, `grano_total`, `entregado`.
-   *Listo cuando:* los tests de R5, R6, R8 y de depósito pasan.
+4. **Grano y cambios.** `cosechar` (R8), `transferir` (R5 y R6), `depositar`, `grano_cosechado`, `grano_total`, `entregado`. `cosechar` y `depositar` además **anotan el cambio** (`CELDA_COSECHADA` / `DEPOSITO`, con `tick_actual`), y agregas `descripcion()` y `cambios()` (§6.1 de la especificación).
+   *Listo cuando:* los tests de R5, R6, R8, de depósito y `test_cosechar_registra_cambio` pasan.
 5. **Delegar rutas.** `Mundo.vecinos` y `Mundo.ruta_bfs` llaman a `rutas.py` de Oswaldo.
-6. **`simulacion.ejecutar`.** Crea mundo, buzón y agentes; ejecuta el bucle del §4.1 (entregar, cosechadora, carro, snapshot, término); arma el trace con `TraceBuilder` y llama `calcular_metricas`. Usa `max_ticks` como tope.
+6. **`simulacion.ejecutar`.** Crea mundo, buzón y agentes; ejecuta el bucle del §4.1 (entregar, cosechadora, carro, snapshot, término); fija `mundo.tick_actual` en cada tick, imprime por consola los cambios de estado y los depósitos (§6.3 de la especificación), arma el trace con `TraceBuilder` (pasándole `mundo.descripcion()` y `mundo.cambios()`) y llama `calcular_metricas`. Usa `max_ticks` como tope.
    *Listo cuando:* los tres escenarios terminan y cumplen las condiciones del §5.4. Hasta que lleguen los agentes reales, pruébalo con agentes falsos que terminen en pocos ticks.
 
 **Respaldo:** Oswaldo.
@@ -158,8 +162,8 @@ Archivos: `rutas.py`, `carro.py`, `tests/test_rutas.py`, `tests/test_carro.py`.
 
 Archivos: `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test_cosechadora.py`.
 
-1. ⚡ **`Buzon`.** Fila FIFO por agente, `id` entero creciente, entrega en `tick+1`, `registro()` para el log.
-   *Listo cuando:* `tests/test_mensajes.py` pasa. Es lo primero que haces: Oswaldo, Carlos y Joel lo necesitan.
+1. ⚡ **`Buzon`.** Fila FIFO por agente, `id` entero creciente, entrega en `tick+1`, `registro()` para el log, y un registro por `logging` de cada envío y cada entrega (formato del §6.3 de la especificación).
+   *Listo cuando:* `tests/test_mensajes.py` pasa (incluido `test_log_de_consola_de_mensajes`). Es lo primero que haces: Oswaldo, Carlos y Joel lo necesitan.
 2. **Fakes para tus pruebas.** Un `Mundo` falso mínimo en `test_cosechadora.py`.
 3. **`cosechadora.py`.** La tabla de estados del §5.1: viaje al campo (con `siguiente_paso` de Oswaldo), cosecha, evaluación de carga (llena o parcial final), espera del carro en `ESPERANDO_TRANSFERENCIA`, transferencia con `duracion_ticks` y `cantidad`, regreso a base y `FIN`. Si la siguiente celda de la serpentina está ocupada, espera con `ESPERAR_BLOQUEO`.
    *Listo cuando:* `tests/test_cosechadora.py` pasa con los fakes.
@@ -172,7 +176,7 @@ Archivos: `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test
 
 Archivos: `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/test_telemetria.py`.
 
-1. ⚡ **Fixture de ejemplo (viernes noche o sábado temprano).** Un script `tools/generar_trace_ejemplo.py` que genere `tests/fixtures/trace_ejemplo.json`: unos 60 ticks inventados pero coherentes con la especificación (los dos agentes en sus bases, un ciclo completo, mensajes con `id`, checksums bien calculados). El script es **determinista (sin aleatoriedad)** y se versionan tanto el script como el JSON que genera. Con esto Giovanni dibuja el visor sin esperar la simulación, y tú desarrollas gráficas y métricas.
+1. ⚡ **Fixture de ejemplo (viernes noche o sábado temprano).** Un script `tools/generar_trace_ejemplo.py` que genere `tests/fixtures/trace_ejemplo.json`: unos 60 ticks inventados pero coherentes con la especificación (los dos agentes en sus bases, un ciclo completo, mensajes con `id`, checksums bien calculados, y las secciones `mundo` y `cambios`). El script es **determinista (sin aleatoriedad)** y se versionan tanto el script como el JSON que genera. Con esto Giovanni dibuja el visor sin esperar la simulación, y tú desarrollas gráficas y métricas.
    *Listo cuando:* `verificar_checksums` es `True` sobre el fixture y Giovanni lo puede abrir.
 2. ⚡ **Telemetría: `TraceBuilder`, `escribir_trace` (byte a byte reproducible), `cargar_trace`, `verificar_checksums`.** La telemetría es el registro automático de lo que ocurre en la simulación (el `trace.json`) y las funciones que lo arman, escriben y verifican. Carlos usa `TraceBuilder` en `simulacion.py`.
    *Listo cuando:* `tests/test_telemetria.py` pasa.
@@ -183,6 +187,7 @@ Archivos: `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/t
    - `colisiones`: ticks con la misma celda o con intercambio de posiciones.
    - `num_ciclos` y `espera_por_ciclo`: a partir de los mensajes `LLENA` y de los tramos de `LLENA_ESPERANDO`.
    - `tick_fin_cosecha`: `tick_envio` del último `TRANSFERENCIA_TERMINADA`.
+   - `grano_total_entregado`: suma de `cantidad` de los cambios `DEPOSITO`.
    - `utilizacion_carro`: fracción de ticks con el carro fuera de `EN_BASE`.
    Cualquier definición que elijas se anota en `docs/decisiones.md`. Pruébalo sobre el fixture, con valores que puedas calcular a mano.
 4. **`viz/plots.py`**: las cuatro gráficas del §7.2, más una tabla resumen (CSV y Markdown) que compare los tres escenarios.
@@ -195,10 +200,10 @@ Archivos: `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/t
 Archivos: `viz/viewer.py`, `cli.py`, `tests/test_viewer.py`.
 
 1. **Visor con el fixture de Joel.** Mientras llega, arranca con un diccionario hecho a mano dentro del propio visor para la ventana y el grid. Mínimo del §7.1: grid, celdas cosechadas vs. por cosechar, bodega y bases marcadas, agentes con orientación, barra de carga, estado en texto, número de tick, estela. Controles: pausa, paso a paso, velocidad.
-   El visor **no importa nada de `harvest_sim`**: solo lee el JSON.
+   El visor **no importa nada de `harvest_sim`**: solo lee el JSON. Toma el grid y las bases de `mundo`, y pinta las celdas cosechadas aplicando `cambios` a medida que avanza el tick (no las deduce de las posiciones).
    *Listo cuando:* reproduce el fixture de principio a fin.
 2. **`tests/test_viewer.py`**: prueba de humo sin ventana (`SDL_VIDEODRIVER=dummy`) que dibuja varios cuadros del fixture.
-3. **`cli.py`.** Cablea `cargar_config` → `ejecutar` → `escribir_trace` → gráficas, crea `runs/<escenario>/`, y devuelve un código de salida distinto de 0 si algo falla. Opción `--sin-plots`.
+3. **`cli.py`.** Cablea `cargar_config` → `ejecutar` → `escribir_trace` → gráficas, crea `runs/<escenario>/`, y devuelve un código de salida distinto de 0 si algo falla. Opciones `--sin-plots`, `--silencioso` y `--detallado`; la CLI configura el nivel de `logging` (§6.3 de la especificación).
    *Listo cuando:* `python -m harvest_sim.cli config/escenario_a.json` genera `trace.json`. Depende de que `simulacion.py` funcione (domingo); mientras tanto prueba con un `ejecutar` falso.
 4. **Preguntas de integración con Unity** (si hay tiempo): una nota breve `docs/integracion_unity.md` con las cuatro preguntas de la propuesta (animar un movimiento, cargar un JSON en tiempo de ejecución, convertir una celda a posición 3D, incrustar la vista en una página). No se implementa Unity en esta entrega.
 
@@ -210,7 +215,7 @@ Archivos: `tests/test_mundo.py`, `tests/test_config.py`, `tests/test_integracion
 
 1. **CI.** `.github/workflows/ci.yml` que, en cada push y PR, instale con `pip install -r requirements.txt` y `pip install -e .`, y ejecute `pytest -q` con Python 3.12 (y `SDL_VIDEODRIVER=dummy`). Primero esto: da una señal verde o roja a todos los demás.
    *Listo cuando:* corre en GitHub sobre `development`.
-2. **Tests desde la especificación.** Escritos por quien no implementa el código: `test_mundo.py`, `test_config.py::test_config_invalida` (parametrizado con cada validación del §3) y `test_integracion.py` (R3, R4, R7 en cada tick, terminación, reproducibilidad, duración de estados, mensaje pendiente). Se suben con `skip` y los vas **activando** a medida que cada módulo llega a `development`: un PR pequeño por módulo.
+2. **Tests desde la especificación.** Escritos por quien no implementa el código: `test_mundo.py`, `test_config.py::test_config_invalida` (parametrizado con cada validación del §3) y `test_integracion.py` (R3, R4, R7 en cada tick, terminación, reproducibilidad, duración de estados, mensaje pendiente, `test_cambios_reconstruyen_el_mapa`). Se suben con `skip` y los vas **activando** a medida que cada módulo llega a `development`: un PR pequeño por módulo.
    *Listo cuando:* en `development` no queda ningún `skip` en tus archivos.
 3. **Scripts.** `scripts/correr_todos.sh` (corre los tres escenarios y las gráficas) y `scripts/verificar_instalacion.sh` (crea un entorno virtual nuevo, instala, corre `pytest` y un escenario).
 4. **Revisión.** Revisas la conformidad con la especificación en los PR grandes y mantienes el formato de `docs/decisiones.md`. Cuando haya conflicto entre lo que dice la especificación y lo que hizo alguien, lo señalas.

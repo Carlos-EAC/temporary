@@ -16,3 +16,10 @@ Formato por entrada:
 ---
 
 <!-- Agrega las entradas debajo, la más reciente al final -->
+
+## 2026-11-14 — El mapa se registra como cambios (no una foto por tick) y se agrega log de consola
+- **Quién:** Joel (Datos)
+- **Decisión:** `trace.json` incluye `mundo` (descripción estática calculada por Python) y `cambios` (lista de `CELDA_COSECHADA` y `DEPOSITO`, solo cuando ocurren). Los registros de agente siguen completos por tick. Los mensajes siguen en el log y además se imprimen por consola con `logging` (§6.3 de la especificación).
+- **Alternativa considerada:** foto completa del mapa en cada tick; y deducir celdas cosechadas en el visor a partir de las posiciones.
+- **Por qué se descartó:** la foto crece como ticks × celdas; deducir en el visor duplica reglas del juego fuera de Python (la simulación es la fuente de verdad, y Unity solo visualiza).
+- **Afecta a:** Carlos (`Mundo.cambios`, `descripcion`, `tick_actual`), Joel (`TraceBuilder.construir`), Emilio (log del `Buzon`), Giovanni (visor y CLI), Ilan (tests nuevos).
