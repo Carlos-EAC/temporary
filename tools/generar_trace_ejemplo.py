@@ -140,6 +140,11 @@ def simular(cfg, forzar_bloqueo=True):
         def avanzar(nombre, otro, fijas):
             """Un paso por la ruta; recalcula si la celda está ocupada; si no hay ruta, espera."""
             a = ag[nombre]
+            if a["ruta"] is None:  # el destino estaba ocupado al planear: se vuelve a intentar
+                a["ruta"] = bfs(a["pos"], a["destino"], ancho, alto, fijas | {ag[otro]["pos"]})
+                if a["ruta"] is None:
+                    bloqueo(nombre)
+                    return False
             nxt = a["ruta"][0]
             if nxt == ag[otro]["pos"]:
                 alt = bfs(a["pos"], a["destino"], ancho, alto, fijas | {ag[otro]["pos"]})
