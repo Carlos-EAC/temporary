@@ -5,6 +5,8 @@ una cosechadora y un carro): no salen del código que se prueba.
 """
 
 import copy
+import importlib.util
+from pathlib import Path
 
 import pytest
 
@@ -18,6 +20,9 @@ from harvest_sim.telemetria import (
     reconstruir,
     verificar_checksums,
 )
+
+RAIZ = Path(__file__).resolve().parents[1]
+FIXTURE = RAIZ / "tests" / "fixtures" / "trace_ejemplo.json"
 
 H, C = "cosechadora_1", "carro_1"
 CAPACIDAD = {H: 4, C: 8}
@@ -290,6 +295,74 @@ def test_escritura_reproducible(tmp_path):
     assert bytes_a.endswith(b"}\n") and b"\r" not in bytes_a
     leido = cargar_trace(a)
     assert leido == trace1 and verificar_checksums(leido)
+
+
+def cargar_generador():
+    spec = importlib.util.spec_from_file_location("generar_trace_ejemplo", RAIZ / "tools" / "generar_trace_ejemplo.py")
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+def test_fixture_es_valido_y_verificable():
+    """El fixture existe, es esquema 2.0, pasa los checksums y se puede reconstruir completo."""
+    trace = cargar_trace(FIXTURE)
+    assert trace["schema_version"] == "2.0" and verificar_checksums(trace)
+    numeros = [t["tick"] for t in trace["ticks"]]
+    assert numeros[0] == 0 and numeros == sorted(set(numeros))
+    assert [e["tick"] for e in reconstruir(trace)] == list(range(trace["meta"]["total_ticks"] + 1))
+
+
+def test_fixture_se_regenera_identico(tmp_path):
+    """Correr el generador de nuevo produce exactamente el mismo archivo (es determinista)."""
+    destino = tmp_path / "otra_vez.json"
+    escribir_trace(cargar_generador().generar(), destino)
+    assert destino.read_bytes() == FIXTURE.read_bytes()
+
+
+def test_fixture_cumple_las_reglas_y_cubre_los_casos():
+    """Desde el log: inicio y fin en las bases, R2 (un paso por tick), R3 (nunca la misma celda), R7
+    (conservación de grano) y los casos que necesitan las métricas: espera, carga parcial final,
+    bloqueo, depósitos y mensajes bien emparejados."""
+    trace = cargar_trace(FIXTURE)
+    estados = list(reconstruir(trace))
+    bases = {a["id"]: tuple(a["base"]) for a in trace["agentes"]}
+    posicion = lambda e, a: (e["agentes"][a]["pose"]["x"], e["agentes"][a]["pose"]["y"])  # noqa: E731
+
+    # inicio y fin
+    assert {a: posicion(estados[0], a) for a in (H, C)} == bases
+    assert {a: posicion(estados[-1], a) for a in (H, C)} == bases
+    assert estados[-1]["agentes"][H]["estado"] == "FIN" and estados[-1]["agentes"][C]["estado"] == "EN_BASE"
+
+    # R2, R3 y R7 en cada tick
+    for anterior, e in zip(estados, estados[1:]):
+        for a in (H, C):
+            (x0, y0), (x1, y1) = posicion(anterior, a), posicion(e, a)
+            assert abs(x0 - x1) + abs(y0 - y1) <= 1, (e["tick"], a)
+    for e in estados:
+        assert posicion(e, H) != posicion(e, C), e["tick"]
+        en_agentes = sum(e["agentes"][a]["carga"] for a in (H, C))
+        assert len(e["celdas_cosechadas"]) == en_agentes + e["entregado_total"], e["tick"]
+
+    campo = trace["mundo"]["ancho"] * (trace["mundo"]["alto"] - 1)
+    assert len(estados[-1]["celdas_cosechadas"]) == campo == estados[-1]["entregado_total"]
+    assert len({tuple(c) for c in estados[-1]["celdas_cosechadas"]}) == campo  # ninguna celda dos veces
+
+    eventos = [(e["tick"], ev) for e in estados for ev in e["eventos"]]
+    # espera por el carro, bloqueo y depósitos
+    assert any(e["agentes"][H]["estado"] == "LLENA_ESPERANDO" for e in estados)
+    assert sum(1 for _, ev in eventos if ev["tipo"] == "BLOQUEO") >= 1
+    assert sum(ev["cantidad"] for _, ev in eventos if ev["tipo"] == "DEPOSITO") == campo
+    # carga parcial final: la última carga que avisa la cosechadora es menor que su capacidad
+    llenas = [ev["payload"]["carga"] for _, ev in eventos
+              if ev["tipo"] == "MENSAJE_ENVIADO" and ev["tipo_mensaje"] == "LLENA"]
+    assert llenas[-1] < trace["agentes"][0]["capacidad"] and len(llenas) >= 2
+    # cada mensaje enviado se entrega en el tick siguiente, con id único y creciente
+    enviados = [(t, ev) for t, ev in eventos if ev["tipo"] == "MENSAJE_ENVIADO"]
+    entregas = {ev["id"]: t for t, ev in eventos if ev["tipo"] == "MENSAJE_ENTREGADO"}
+    assert [ev["id"] for _, ev in enviados] == list(range(1, len(enviados) + 1))
+    for t, ev in enviados:
+        assert ev["entrega_en"] == t + 1 and entregas[ev["id"]] == t + 1
 
 
 @pytest.mark.skip(reason="pendiente — tarea 3 de Datos (métricas)")
