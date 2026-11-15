@@ -47,7 +47,7 @@ Formato por entrada:
 - **Afecta a:** Carlos (`Mundo.registrar_bloqueo`), Emilio y Oswaldo (`registro()` sin `intencion` ni `objetivo`; llamar a `registrar_bloqueo`), Joel (`TraceBuilder`, métricas), Giovanni (visor), Ilan (tests).
 
 ## 2026-11-15 — Definiciones de las métricas calculadas desde el log
-- **Estado:** DECIDIDO.
+- **Estado:** PROVISIONAL. Primera versión con las métricas del §6.2; falta revisar con Joel cuáles se toman y cómo se agrupan en las gráficas.
 - **Quién:** Joel (Datos)
 - **Decisión:** las métricas del §6.2 se calculan solo desde el `trace.json` (reconstruyendo el estado de cada tick) con estas definiciones: se cuentan los ticks 0..`total_ticks` (ambos incluidos); `tiempo_completacion` = `total_ticks`; `distancia_*` = ticks en que cambió la celda (x, y) del agente (un cambio solo de orientación no cuenta); `colisiones` = ticks (no pares) con dos agentes en la misma celda o intercambiando posiciones; `ticks_bloqueados` = eventos `BLOQUEO`, un valor por agente (`{agent_id: n}`); `num_ciclos` = mensajes `LLENA` enviados; `espera_por_ciclo` = largo de cada racha consecutiva de `LLENA_ESPERANDO`; `tick_fin_cosecha` = tick del último `TRANSFERENCIA_TERMINADA` enviado (`null` si no hay); `utilizacion_carro` = ticks con el carro fuera de `EN_BASE` entre el total de ticks, redondeado a 4 decimales.
 - **Alternativa considerada:** calcular las métricas dentro de la simulación; contar pares de colisión en vez de ticks; contar solo los ticks que aparecen en el archivo.
