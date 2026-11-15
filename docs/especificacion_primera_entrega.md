@@ -257,6 +257,8 @@ La simulación termina cuando se cumplen a la vez: cosechadora en `FIN`, carro e
 
 ### 6.1 Formato del log (`runs/<escenario>/trace.json`)
 
+> **Estado: en revisión.** El principio (mapa como cambios, visor sin lógica) está decidido; la estructura exacta del archivo puede cambiar. Ver la entrada del 2026-11-14 en `docs/decisiones.md`.
+
 Un único archivo JSON por corrida:
 
 ```json

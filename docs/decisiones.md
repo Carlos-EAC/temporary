@@ -18,6 +18,7 @@ Formato por entrada:
 <!-- Agrega las entradas debajo, la más reciente al final -->
 
 ## 2026-11-14 — El mapa se registra como cambios (no una foto por tick) y se agrega log de consola
+- **Estado:** PROVISIONAL. El principio (el mapa como cambios, visor sin lógica, log de consola) está decidido; la estructura exacta del `trace.json` está en revisión (ver `docs/propuesta_formato_trace.md` cuando se suba). No implementar `TraceBuilder.construir` hasta que se cierre.
 - **Quién:** Joel (Datos)
 - **Decisión:** `trace.json` incluye `mundo` (descripción estática calculada por Python) y `cambios` (lista de `CELDA_COSECHADA` y `DEPOSITO`, solo cuando ocurren). Los registros de agente siguen completos por tick. Los mensajes siguen en el log y además se imprimen por consola con `logging` (§6.3 de la especificación).
 - **Alternativa considerada:** foto completa del mapa en cada tick; y deducir celdas cosechadas en el visor a partir de las posiciones.
