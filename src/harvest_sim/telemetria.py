@@ -688,3 +688,125 @@ def validar_trace(trace) -> list[str]:
         if ident not in entregados and entrega_en <= total:
             error(f"el mensaje {ident} (enviado en el tick {enviado_en}) nunca se entregó")
     return errores
+
+
+# --- Comparación contra la línea base -----------------------------------------------------------
+# Sentido de cada métrica: "mejor" es lo que aprovecha mejor los recursos disponibles, sobre todo el
+# tiempo. "menor": menos es mejor; "mayor": más es mejor; "neutro": informativa, no depende de la
+# coordinación (por ejemplo, el número de ciclos lo fija la capacidad).
+SENTIDO_METRICAS = {
+    "tiempo_ocioso_cosechadora": "menor",
+    "tiempo_transfiriendo": "menor",
+    "tick_fin_cosecha": "menor",
+    "tiempo_completacion": "menor",
+    "distancia_cosechadora": "menor",
+    "distancia_carro": "menor",
+    "distancia_total": "menor",
+    "colisiones": "menor",
+    "num_ciclos": "neutro",
+    "utilizacion_carro": "mayor",
+    "grano_total_entregado": "mayor",
+    "porcentaje_ocioso": "menor",
+    "distancia_cosechadora_carro_promedio": "menor",
+    "distancia_cosechadora_carro_minima": "neutro",
+    "distancia_cosechadora_carro_maxima": "menor",
+    "grano_cosechado_total": "mayor",
+    "grano_esperado_total": "neutro",
+    "porcentaje_entregado": "mayor",
+}
+# Estados que son tiempo de espera o recurso sin usar: menos ticks en ellos es mejor.
+ESTADOS_DE_ESPERA = ("LLENA_ESPERANDO", "ESPERANDO_TRANSFERENCIA", "EN_BASE")
+# Métricas anidadas que son conteos: si una clave falta en una corrida, vale 0.
+_PREFIJOS_CONTEO = ("ticks_por_estado.", "ticks_bloqueados.", "mensajes_enviados.")
+RESULTADOS = ("mejora", "empeora", "igual", "distinto", "sin datos")
+
+
+def aplanar_metricas(metricas: dict, prefijo: str = "") -> dict:
+    """{'a': {'b': 1}, 'l': [1, 2]} -> {'a.b': 1, 'l': '1;2'}: una columna por valor, para tablas y comparaciones."""
+    plano = {}
+    for clave, valor in metricas.items():
+        nombre = f"{prefijo}.{clave}" if prefijo else clave
+        if isinstance(valor, dict):
+            plano.update(aplanar_metricas(valor, nombre))
+        elif isinstance(valor, list):
+            plano[nombre] = ";".join(str(v) for v in valor)
+        else:
+            plano[nombre] = valor
+    return plano
+
+
+def sentido_de_metrica(clave: str) -> str:
+    """'menor', 'mayor' o 'neutro' para una métrica (aplanada con '.')."""
+    if clave.startswith("ticks_por_estado."):
+        return "menor" if clave.rsplit(".", 1)[-1] in ESTADOS_DE_ESPERA else "neutro"
+    if clave.startswith("ticks_bloqueados."):
+        return "menor"
+    if clave.startswith("mensajes_enviados."):
+        return "neutro"
+    return SENTIDO_METRICAS.get(clave, "neutro")
+
+
+def _es_numero(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def comparar_metricas(base: dict, nueva: dict) -> dict[str, dict]:
+    """Compara dos diccionarios de métricas (los de `calcular_metricas`), métrica por métrica.
+
+    Devuelve {metrica_aplanada: {base, nueva, diferencia, cambio_pct, sentido, resultado}}, donde
+    diferencia = nueva - base, cambio_pct = diferencia / base en % (None si la base es 0 y hubo cambio) y
+    resultado es 'mejora', 'empeora', 'igual', 'distinto' (métrica informativa que cambió) o 'sin datos'.
+    Las métricas que no son números (por ejemplo, la lista espera_por_ciclo) no se comparan.
+    """
+    pb, pn = aplanar_metricas(base), aplanar_metricas(nueva)
+    claves = list(pb) + [c for c in pn if c not in pb]
+    filas = {}
+    for clave in claves:
+        b, n = pb.get(clave), pn.get(clave)
+        if clave.startswith(_PREFIJOS_CONTEO):
+            b, n = (0 if b is None else b), (0 if n is None else n)
+        if not (b is None or _es_numero(b)) or not (n is None or _es_numero(n)) or (b is None and n is None):
+            continue
+        sentido = sentido_de_metrica(clave)
+        if b is None or n is None:
+            diferencia = cambio = None
+            resultado = "sin datos"
+        else:
+            diferencia = n - b
+            if isinstance(diferencia, float):
+                diferencia = round(diferencia, 4)
+            cambio = round(100 * diferencia / b, 2) if b != 0 else (0.0 if diferencia == 0 else None)
+            if diferencia == 0:
+                resultado = "igual"
+            elif sentido == "neutro":
+                resultado = "distinto"
+            elif (diferencia < 0) == (sentido == "menor"):
+                resultado = "mejora"
+            else:
+                resultado = "empeora"
+        filas[clave] = {"base": b, "nueva": n, "diferencia": diferencia, "cambio_pct": cambio,
+                        "sentido": sentido, "resultado": resultado}
+    return filas
+
+
+def comparar_corridas(trace_base: dict, trace_nuevo: dict) -> dict:
+    """Compara una corrida nueva contra la línea base del MISMO escenario.
+
+    Exige el mismo mapa (`mundo`), los mismos agentes y la misma seed; si no, lanza ValueError, porque la
+    comparación solo vale en los mismos mapas y seeds. Otras diferencias de config (por ejemplo, un
+    parámetro de la estrategia nueva) se permiten y se informan en `diferencias_config`.
+    """
+    difieren = [c for c in ("mundo", "agentes") if trace_base.get(c) != trace_nuevo.get(c)]
+    if trace_base["meta"].get("seed") != trace_nuevo["meta"].get("seed"):
+        difieren.append("seed")
+    if difieren:
+        raise ValueError(f"las corridas no son del mismo escenario: difieren en {difieren}")
+    cfg_b, cfg_n = trace_base.get("config", {}), trace_nuevo.get("config", {})
+    diferencias_config = sorted(k for k in set(cfg_b) | set(cfg_n) if k != "nombre" and cfg_b.get(k) != cfg_n.get(k))
+    filas = comparar_metricas(calcular_metricas(trace_base), calcular_metricas(trace_nuevo))
+    return {
+        "escenario": trace_base["meta"].get("escenario"),
+        "diferencias_config": diferencias_config,
+        "metricas": filas,
+        "resumen": {r: sum(1 for f in filas.values() if f["resultado"] == r) for r in RESULTADOS},
+    }

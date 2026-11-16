@@ -60,3 +60,17 @@ Formato por entrada:
 - **Alternativa considerada:** promedio del ocioso por ciclo o entre corridas; distancia solo por ciclo, en el momento del aviso `LLENA`; calcular las métricas dentro de la simulación; contar pares de colisión; contar solo los ticks que aparecen en el archivo.
 - **Por qué se descartó:** se prefiere ver el ocioso acumulado en el tiempo (la curva muestra el total hasta cada tick) y la distancia por tick; las métricas deben poder recalcularse desde el log para ser verificables; los ticks omitidos también cuentan.
 - **Afecta a:** Joel (`calcular_metricas`, `series_temporales`); el resto del equipo solo las lee del `trace.json` (clave `metricas`).
+
+## 2026-11-16 — Sentido de cada métrica al comparar contra la línea base
+- **Estado:** DECIDIDO (revisable cuando cambien las funciones de costo).
+- **Quién:** Joel (Datos)
+- **Decisión:** "mejor" es lo que aprovecha mejor los recursos disponibles, sobre todo el tiempo. Al comparar una corrida nueva contra la línea base del mismo escenario (mismo mapa, mismos agentes y misma seed), cada métrica se marca como mejora, empeora, igual, distinta (si es informativa) o sin datos:
+  - **Menor es mejor:** tiempos (completación, fin de la cosecha, ocioso, % ocioso, transferencia), distancias (de cada agente, total, cosechadora–carro promedio y máxima), colisiones, bloqueos y ticks en estados de espera (`LLENA_ESPERANDO`, `ESPERANDO_TRANSFERENCIA`, `EN_BASE`).
+  - **Mayor es mejor:** utilización del carro, grano cosechado, grano entregado y % entregado.
+  - **Informativas** (no dependen de la coordinación): número de ciclos, mensajes por tipo, distancia cosechadora–carro mínima, grano esperado y ticks en los demás estados.
+  - Las métricas que son conteos por clave (ticks por estado, bloqueos, mensajes) valen 0 si la clave no aparece en una corrida. Las listas (`espera_por_ciclo`) no se comparan.
+  - Una diferencia de config fuera del mapa, los agentes y la seed (por ejemplo, un parámetro de la estrategia nueva) se permite y se informa.
+- **Alternativa considerada:** un solo puntaje combinado (por ejemplo, la función de costo J); comparar solo el tiempo ocioso.
+- **Por qué se descartó:** un puntaje combinado oculta qué cambió y obliga a fijar pesos antes de tiempo; comparar solo el ocioso pierde información. Ver todas las métricas permite revisar el efecto de cambiar las funciones de costo.
+- **Nota:** la utilización del carro puede bajar aunque la corrida mejore, si el mismo trabajo se hace en menos tiempo (el carro pasa proporcionalmente más tiempo en su base). Hay que leerla junto con el tiempo de completación.
+- **Afecta a:** Joel (`comparar_metricas`, `comparar_corridas`, `viz/comparar.py`).

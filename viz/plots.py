@@ -40,7 +40,13 @@ from matplotlib.ticker import MaxNLocator  # noqa: E402
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "src"))
 
-from harvest_sim.telemetria import calcular_metricas, cargar_trace, reconstruir, series_temporales  # noqa: E402
+from harvest_sim.telemetria import (  # noqa: E402
+    aplanar_metricas,
+    calcular_metricas,
+    cargar_trace,
+    reconstruir,
+    series_temporales,
+)
 
 # --- Tokens de la paleta de referencia (modo claro) ---------------------------------------------
 SUPERFICIE = "#fcfcfb"
@@ -307,25 +313,13 @@ def grafica_comparacion(traces, destino):
 
 
 # --- Tabla resumen ------------------------------------------------------------------------------
-def _aplanar(valor, prefijo=""):
-    """Convierte las métricas anidadas en columnas planas: {'a': {'b': 1}} -> {'a.b': 1}; las listas se unen con ';'."""
-    if isinstance(valor, dict):
-        plano = {}
-        for k, v in valor.items():
-            plano.update(_aplanar(v, f"{prefijo}.{k}" if prefijo else k))
-        return plano
-    if isinstance(valor, list):
-        return {prefijo: ";".join(str(v) for v in valor)}
-    return {prefijo: valor}
-
-
 def tabla_resumen(traces, destino_csv, destino_md):
     """Una fila por escenario. El CSV lleva TODAS las métricas (anidadas aplanadas con '.'); el Markdown, las principales."""
     metricas = {nombre: calcular_metricas(t) for nombre, t in traces.items()}
     destino_csv, destino_md = Path(destino_csv), Path(destino_md)
     destino_csv.parent.mkdir(parents=True, exist_ok=True)
 
-    filas = {nombre: {"escenario": nombre, **_aplanar(m)} for nombre, m in metricas.items()}
+    filas = {nombre: {"escenario": nombre, **aplanar_metricas(m)} for nombre, m in metricas.items()}
     columnas = []
     for fila in filas.values():
         columnas += [c for c in fila if c not in columnas]  # unión, en orden de aparición
