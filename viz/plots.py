@@ -13,8 +13,11 @@ Gráficas de cada corrida, agrupadas por la pregunta que responden:
   3. Tiempo ocioso acumulado de la cosechadora.                      ¿Cuánto ha esperado hasta ahora?
   4. Distancia entre la cosechadora y el carro, por tick.             ¿Qué tan lejos está el carro?
   5. Grano cosechado y grano en la bodega, contra el total esperado.  ¿Cuánto grano llega?
+  6. Combustible en el tanque de cada agente.                         ¿Cuánto combustible queda?
+  7. Combustible comprado contra el valor del grano entregado.         ¿Vale lo que cuesta?
 Y entre escenarios:
-  6. Comparación de las métricas principales.
+  8. Comparación de las métricas principales.
+Opción --parametros archivo.json: cambia los parámetros de combustible y precios (ver PARAMETROS_POR_DEFECTO).
   + tabla resumen (resumen.csv con todas las métricas y resumen.md con las principales).
 
 Diseño (guía de visualización): paleta categórica validada con 6 hues en orden fijo, texto en tintas de
@@ -43,8 +46,11 @@ sys.path.insert(0, str(RAIZ / "src"))
 from harvest_sim.telemetria import (  # noqa: E402
     aplanar_metricas,
     calcular_metricas,
+    cargar_parametros,
     cargar_trace,
+    parametros_economicos,
     reconstruir,
+    series_combustible,
     series_temporales,
 )
 
@@ -83,6 +89,8 @@ METRICAS_COMPARACION = [
     ("distancia_cosechadora_carro_promedio", "Distancia media\ncosechadora–carro (celdas)"),
     ("utilizacion_carro", "Utilización del carro\n(fracción del tiempo)"),
     ("porcentaje_entregado", "Grano entregado\n(% del esperado)"),
+    ("costo_combustible", "Costo del combustible\n($)"),
+    ("balance", "Balance\n(valor del grano − combustible, $)"),
 ]
 # Columnas de la tabla en Markdown (el CSV lleva todas las métricas)
 COLUMNAS_MD = [
@@ -99,6 +107,8 @@ COLUMNAS_MD = [
     ("num_ciclos", "Ciclos"),
     ("grano_total_entregado", "Grano entregado"),
     ("porcentaje_entregado", "% entregado"),
+    ("costo_combustible", "Costo combustible ($)"),
+    ("balance", "Balance ($)"),
 ]
 
 
@@ -277,13 +287,69 @@ def grafica_grano(trace, destino, ruta=None):
     return _guardar(fig, destino)
 
 
-# --- 6. Comparación entre escenarios ------------------------------------------------------------
-def grafica_comparacion(traces, destino):
+# --- 6. Combustible en el tanque ----------------------------------------------------------------
+COLORES_AGENTE = [AZUL, AQUA, NARANJA, AMARILLO, MAGENTA, VERDE]  # azul y aqua: validados juntos
+
+
+def grafica_combustible(trace, destino, ruta=None, parametros=None):
+    """Litros en el tanque de cada agente: baja al moverse o con el motor encendido y sube al recargar en la base."""
+    _estilo()
+    s = series_combustible(trace, parametros)
+    p = parametros_economicos(parametros)
+    ticks = s["tick"]
+    fig, ax = plt.subplots(figsize=(10, 4.2))
+    maximo = 0
+    for i, a in enumerate(trace["agentes"]):
+        color = COLORES_AGENTE[i % len(COLORES_AGENTE)]
+        capacidad = p["capacidad_tanque"][a["tipo"]]
+        maximo = max(maximo, capacidad)
+        ax.axhline(capacidad, color=TINTA_TENUE, linewidth=1, zorder=1)
+        ax.text(0, capacidad, f" tanque de {a['id']} ({capacidad:g} L)", ha="left", va="bottom", color=TINTA_2, fontsize=8)
+        ax.step(ticks, s[a["id"]]["nivel"], where="post", color=color, linewidth=2, solid_capstyle="round",
+                zorder=3, label=a["id"])
+    ax.set_title(f"Combustible en el tanque — {nombre_escenario(trace, ruta)}")
+    ax.set_xlabel("Tick")
+    ax.set_ylabel("Litros en el tanque")
+    ax.set_xlim(0, ticks[-1])
+    ax.set_ylim(min(0, min(min(s[a["id"]]["nivel"]) for a in trace["agentes"])), maximo * 1.12)
+    ax.legend(loc="lower left")
+    return _guardar(fig, destino)
+
+
+# --- 7. Gasto y valor -----------------------------------------------------------------------------
+def grafica_gasto(trace, destino, ruta=None, parametros=None):
+    """Lo pagado en combustible (tanque inicial + recargas) contra el valor del grano que llega a la bodega."""
+    _estilo()
+    p = parametros_economicos(parametros)
+    sc, st = series_combustible(trace, parametros), series_temporales(trace)
+    ticks = sc["tick"]
+    costo = [sum(sc[a["id"]]["comprado_acumulado"][i] for a in trace["agentes"]) * p["precio_por_litro"]
+             for i in range(len(ticks))]
+    valor = [v * p["valor_por_unidad_de_grano"] for v in st["entregado_en_bodega"]]
+    fig, ax = plt.subplots(figsize=(10, 4.2))
+    ax.step(ticks, valor, where="post", color=AZUL, linewidth=2, solid_capstyle="round", zorder=3,
+            label="Valor del grano en la bodega")
+    ax.step(ticks, costo, where="post", color=NARANJA, linewidth=2, solid_capstyle="round", zorder=3,
+            label="Combustible comprado (tanque inicial + recargas)")
+    balance = valor[-1] - costo[-1]
+    ax.text(0.99, 0.04, f"balance final: {balance:+,.2f} $", transform=ax.transAxes, ha="right", va="bottom",
+            color=TINTA_2, fontsize=9)
+    ax.set_title(f"Gasto en combustible y valor del grano — {nombre_escenario(trace, ruta)}")
+    ax.set_xlabel("Tick")
+    ax.set_ylabel("$ acumulados")
+    ax.set_xlim(0, ticks[-1])
+    ax.set_ylim(0, max(costo + valor + [1]) * 1.15)
+    ax.legend(loc="upper left")
+    return _guardar(fig, destino)
+
+
+# --- 8. Comparación entre escenarios ------------------------------------------------------------
+def grafica_comparacion(traces, destino, parametros=None):
     """`traces`: {nombre: trace}. Un panel por métrica (cada una con su propia escala) y un color fijo por escenario."""
     if len(traces) > len(SERIES):
         raise ValueError(f"se pueden comparar hasta {len(SERIES)} escenarios a la vez")
     _estilo()
-    metricas = {nombre: calcular_metricas(t) for nombre, t in traces.items()}
+    metricas = {nombre: calcular_metricas(t, parametros) for nombre, t in traces.items()}
     nombres = list(traces)
     columnas = 4
     filas = -(-len(METRICAS_COMPARACION) // columnas)
@@ -293,15 +359,18 @@ def grafica_comparacion(traces, destino):
         barras = ax.bar(range(len(nombres)), valores, width=0.55, color=SERIES[:len(nombres)],
                         edgecolor=SUPERFICIE, linewidth=1.5)
         for barra, valor in zip(barras, valores):
-            ax.text(barra.get_x() + barra.get_width() / 2, valor, _formato(valor), ha="center", va="bottom",
-                    color=TINTA_2, fontsize=9)
+            ax.text(barra.get_x() + barra.get_width() / 2, valor, _formato(valor), ha="center",
+                    va="bottom" if valor >= 0 else "top", color=TINTA_2, fontsize=9)
         ax.set_title(titulo, fontsize=10)
         ax.set_xticks(range(len(nombres)))
         ax.set_xticklabels([n.replace("escenario_", "").upper() if n.startswith("escenario_") else n
                             for n in nombres], fontsize=9)
         ax.grid(axis="x", visible=False)
         ax.set_xlim(-0.7, max(len(nombres), 3) - 1 + 0.7)
-        ax.set_ylim(0, max(valores + [1]) * 1.18)
+        bajo, alto = min(valores + [0]), max(valores + [0])
+        ax.set_ylim(bajo * 1.25 if bajo < 0 else 0, alto * 1.18 if alto > 0 else 1)
+        if bajo < 0:
+            ax.axhline(0, color=EJE, linewidth=1)
     for ax in list(ejes.flat)[len(METRICAS_COMPARACION):]:
         ax.set_visible(False)
     if len(nombres) > 1:
@@ -313,9 +382,9 @@ def grafica_comparacion(traces, destino):
 
 
 # --- Tabla resumen ------------------------------------------------------------------------------
-def tabla_resumen(traces, destino_csv, destino_md):
+def tabla_resumen(traces, destino_csv, destino_md, parametros=None):
     """Una fila por escenario. El CSV lleva TODAS las métricas (anidadas aplanadas con '.'); el Markdown, las principales."""
-    metricas = {nombre: calcular_metricas(t) for nombre, t in traces.items()}
+    metricas = {nombre: calcular_metricas(t, parametros) for nombre, t in traces.items()}
     destino_csv, destino_md = Path(destino_csv), Path(destino_md)
     destino_csv.parent.mkdir(parents=True, exist_ok=True)
 
@@ -341,7 +410,7 @@ def tabla_resumen(traces, destino_csv, destino_md):
 
 
 # --- Orquestación -------------------------------------------------------------------------------
-def graficas_de_un_trace(ruta_trace, carpeta=None):
+def graficas_de_un_trace(ruta_trace, carpeta=None, parametros=None):
     """Las gráficas 1 a 5 de un trace.json. Devuelve las rutas generadas."""
     trace = cargar_trace(ruta_trace)
     carpeta = Path(carpeta) if carpeta else Path(ruta_trace).resolve().parent / "plots"
@@ -351,14 +420,18 @@ def graficas_de_un_trace(ruta_trace, carpeta=None):
         grafica_ocioso_acumulado(trace, carpeta / "3_ocioso_acumulado.png", ruta_trace),
         grafica_distancia(trace, carpeta / "4_distancia_cosechadora_carro.png", ruta_trace),
         grafica_grano(trace, carpeta / "5_grano_en_bodega.png", ruta_trace),
+        grafica_combustible(trace, carpeta / "6_combustible.png", ruta_trace, parametros),
+        grafica_gasto(trace, carpeta / "7_gasto_y_valor.png", ruta_trace, parametros),
     ]
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Genera las gráficas y la tabla resumen a partir de trace.json.")
-    parser.add_argument("trace", nargs="+", help="uno o más trace.json (la gráfica 6 y la tabla comparan varios)")
+    parser.add_argument("trace", nargs="+", help="uno o más trace.json (la gráfica 8 y la tabla comparan varios)")
     parser.add_argument("--salida", help="carpeta de salida (por defecto, junto a cada trace y en <runs>/comparacion)")
+    parser.add_argument("--parametros", help="JSON con los parámetros de combustible y precios que cambian")
     args = parser.parse_args(argv)
+    parametros = cargar_parametros(args.parametros) if args.parametros else None
 
     traces, generados = {}, []
     for ruta in args.trace:
@@ -366,13 +439,13 @@ def main(argv=None):
         nombre = nombre_escenario(trace, ruta)
         traces[nombre] = trace
         carpeta = Path(args.salida) / nombre if args.salida else None
-        generados += graficas_de_un_trace(ruta, carpeta)
+        generados += graficas_de_un_trace(ruta, carpeta, parametros)
     if args.salida:
         comparacion = Path(args.salida) / "comparacion"
     else:
         comparacion = Path(args.trace[0]).resolve().parent.parent / "comparacion"
-    generados.append(grafica_comparacion(traces, comparacion / "6_comparacion_escenarios.png"))
-    generados += tabla_resumen(traces, comparacion / "resumen.csv", comparacion / "resumen.md")
+    generados.append(grafica_comparacion(traces, comparacion / "8_comparacion_escenarios.png", parametros))
+    generados += tabla_resumen(traces, comparacion / "resumen.csv", comparacion / "resumen.md", parametros)
     for g in generados:
         print(g)
     return 0

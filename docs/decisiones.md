@@ -74,3 +74,17 @@ Formato por entrada:
 - **Por qué se descartó:** un puntaje combinado oculta qué cambió y obliga a fijar pesos antes de tiempo; comparar solo el ocioso pierde información. Ver todas las métricas permite revisar el efecto de cambiar las funciones de costo.
 - **Nota:** la utilización del carro puede bajar aunque la corrida mejore, si el mismo trabajo se hace en menos tiempo (el carro pasa proporcionalmente más tiempo en su base). Hay que leerla junto con el tiempo de completación.
 - **Afecta a:** Joel (`comparar_metricas`, `comparar_corridas`, `viz/comparar.py`).
+
+## 2026-11-16 — Combustible y gasto, calculados desde el log
+- **Estado:** DECIDIDO (los valores de los parámetros son de ejemplo hasta tener datos reales).
+- **Quién:** Joel (Datos)
+- **Decisión:**
+  1. El combustible se **calcula desde el log** (no cambia el formato del trace ni el trabajo de los agentes): cada agente tiene un tanque que empieza lleno; gasta `consumo_por_celda` por cada celda recorrida y `consumo_por_tick_encendido` por cada tick quieto con el motor encendido; en `EN_BASE` o `FIN` el motor está apagado y el tanque **se recarga por completo**.
+  2. Por ahora el tanque es lo bastante grande para una corrida completa, así que los agentes no tienen que decidir cuándo recargar; la métrica `combustible_suficiente` avisa si no lo fue.
+  3. **Se cobra el tanque inicial completo más cada recarga** (como en una gasolinera: se paga lo que se carga, no solo lo que se usa). `costo_combustible` = combustible comprado × `precio_por_litro`.
+  4. El grano entregado en la bodega vale `valor_por_unidad_de_grano`; `balance` = valor del grano entregado − costo del combustible.
+  5. Métricas nuevas: `combustible_usado` y `combustible_comprado` (por agente y total), `recargas`, `combustible_minimo_en_tanque`, `combustible_suficiente`, `costo_combustible`, `valor_grano_entregado` y `balance`. Al comparar contra la línea base: menos combustible y menos costo es mejor; más valor y más balance es mejor; recargas y nivel mínimo son informativos.
+  6. Parámetros por defecto (de ejemplo): tanque de 300 L (cosechadora) y 100 L (carro); 2 y 1 L por celda; 0,5 y 0,25 L por tick con el motor encendido; 1 $ por litro; 10 $ por unidad de grano. Se cambian con `--parametros archivo.json`.
+- **Alternativa considerada:** registrar el nivel del tanque en el trace (campo `combustible` y evento `RECARGA`, formato 2.1); consumir solo por celda recorrida; cobrar solo lo usado o solo las recargas.
+- **Por qué se descartó:** registrar en el trace exige cambiar el formato y el trabajo de la simulación, y hoy los agentes no deciden según el combustible; consumir solo al moverse haría que esperar no costara nada y el tiempo ocioso no se reflejaría en el gasto; cobrar solo lo usado no representa que se paga el tanque completo. Cuando la simulación tenga que decidir según el combustible (recargar antes de vaciarse), el nivel pasará al trace.
+- **Afecta a:** Joel (`metricas_economicas`, `series_combustible`, gráficas 6 y 7, comparación).

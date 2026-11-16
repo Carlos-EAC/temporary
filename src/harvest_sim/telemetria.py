@@ -246,7 +246,7 @@ def series_temporales(trace: dict) -> dict[str, list]:
     return serie
 
 
-def calcular_metricas(trace: dict) -> dict:
+def calcular_metricas(trace: dict, parametros: dict | None = None) -> dict:
     """Calcula las métricas A PARTIR DEL LOG (usa `reconstruir`; no modifica el trace).
 
     Definiciones (registradas en docs/decisiones.md):
@@ -269,6 +269,9 @@ def calcular_metricas(trace: dict) -> dict:
     - distancia_cosechadora_carro_promedio / _minima / _maxima: sobre la distancia Manhattan de cada tick.
     - grano_cosechado_total, grano_esperado_total (ancho x (alto - 1) x grano_por_celda) y
       porcentaje_entregado (entregado / esperado, en %, 2 decimales; None si no se conoce el total esperado).
+    Combustible y gasto (ver `metricas_economicas`; `parametros` cambia los valores por defecto):
+    - combustible_usado / _comprado (por agente y total), recargas, combustible_minimo_en_tanque,
+      combustible_suficiente, costo_combustible, valor_grano_entregado y balance.
     """
     cosechadoras = [a["id"] for a in trace["agentes"] if a["tipo"] == "cosechadora"]
     carros = [a["id"] for a in trace["agentes"] if a["tipo"] == "carro"]
@@ -331,7 +334,7 @@ def calcular_metricas(trace: dict) -> dict:
             mensajes[ev["tipo_mensaje"]] = mensajes.get(ev["tipo_mensaje"], 0) + 1
     distancias = series_temporales(trace)["distancia_cosechadora_carro"]
 
-    return {
+    metricas = {
         "tiempo_ocioso_cosechadora": ocioso,
         "tiempo_transfiriendo": contar_estado("TRANSFIRIENDO", cosechadoras),
         "tick_fin_cosecha": max(terminadas) if terminadas else None,
@@ -357,6 +360,8 @@ def calcular_metricas(trace: dict) -> dict:
         "grano_esperado_total": esperado,
         "porcentaje_entregado": round(100 * entregado / esperado, 2) if esperado else None,
     }
+    metricas.update(metricas_economicas(trace, parametros))
+    return metricas
 
 
 # --- Validador del trace (contrato ejecutable del formato 2.0) -----------------------------------
@@ -713,6 +718,11 @@ SENTIDO_METRICAS = {
     "grano_cosechado_total": "mayor",
     "grano_esperado_total": "neutro",
     "porcentaje_entregado": "mayor",
+    "combustible_usado_total": "menor",
+    "combustible_comprado_total": "menor",
+    "costo_combustible": "menor",
+    "valor_grano_entregado": "mayor",
+    "balance": "mayor",
 }
 # Estados que son tiempo de espera o recurso sin usar: menos ticks en ellos es mejor.
 ESTADOS_DE_ESPERA = ("LLENA_ESPERANDO", "ESPERANDO_TRANSFERENCIA", "EN_BASE")
@@ -741,7 +751,9 @@ def sentido_de_metrica(clave: str) -> str:
         return "menor" if clave.rsplit(".", 1)[-1] in ESTADOS_DE_ESPERA else "neutro"
     if clave.startswith("ticks_bloqueados."):
         return "menor"
-    if clave.startswith("mensajes_enviados."):
+    if clave.startswith(("combustible_usado.", "combustible_comprado.")):
+        return "menor"
+    if clave.startswith(("mensajes_enviados.", "recargas.", "combustible_minimo_en_tanque.")):
         return "neutro"
     return SENTIDO_METRICAS.get(clave, "neutro")
 
@@ -789,7 +801,7 @@ def comparar_metricas(base: dict, nueva: dict) -> dict[str, dict]:
     return filas
 
 
-def comparar_corridas(trace_base: dict, trace_nuevo: dict) -> dict:
+def comparar_corridas(trace_base: dict, trace_nuevo: dict, parametros: dict | None = None) -> dict:
     """Compara una corrida nueva contra la línea base del MISMO escenario.
 
     Exige el mismo mapa (`mundo`), los mismos agentes y la misma seed; si no, lanza ValueError, porque la
@@ -803,10 +815,126 @@ def comparar_corridas(trace_base: dict, trace_nuevo: dict) -> dict:
         raise ValueError(f"las corridas no son del mismo escenario: difieren en {difieren}")
     cfg_b, cfg_n = trace_base.get("config", {}), trace_nuevo.get("config", {})
     diferencias_config = sorted(k for k in set(cfg_b) | set(cfg_n) if k != "nombre" and cfg_b.get(k) != cfg_n.get(k))
-    filas = comparar_metricas(calcular_metricas(trace_base), calcular_metricas(trace_nuevo))
+    filas = comparar_metricas(calcular_metricas(trace_base, parametros), calcular_metricas(trace_nuevo, parametros))
     return {
         "escenario": trace_base["meta"].get("escenario"),
         "diferencias_config": diferencias_config,
         "metricas": filas,
         "resumen": {r: sum(1 for f in filas.values() if f["resultado"] == r) for r in RESULTADOS},
+    }
+
+
+# --- Combustible y gasto --------------------------------------------------------------------------
+# Se calcula desde el log (no cambia el formato del trace): cada agente tiene un tanque que empieza lleno,
+# gasta por cada celda recorrida y, con el motor encendido, por cada tick quieto; en la base (estados
+# EN_BASE o FIN) el motor está apagado y el tanque se recarga por completo. El combustible que se cobra es
+# el tanque inicial completo más cada recarga: como en una gasolinera, se paga lo que se carga, no solo lo
+# que se usa. Los valores son de ejemplo (placeholders) hasta tener datos reales; el tanque es lo bastante
+# grande para una corrida completa, y `combustible_suficiente` avisa si no lo fue.
+PARAMETROS_POR_DEFECTO = {
+    "capacidad_tanque": {"cosechadora": 300.0, "carro": 100.0},       # litros
+    "consumo_por_celda": {"cosechadora": 2.0, "carro": 1.0},          # litros por celda recorrida
+    "consumo_por_tick_encendido": {"cosechadora": 0.5, "carro": 0.25},  # litros por tick quieto, motor encendido
+    "precio_por_litro": 1.0,                                          # $ por litro
+    "valor_por_unidad_de_grano": 10.0,                                # $ por unidad entregada en la bodega
+}
+ESTADOS_MOTOR_APAGADO = ("EN_BASE", "FIN")
+
+
+def parametros_economicos(cambios: dict | None = None) -> dict:
+    """Los parámetros por defecto con `cambios` aplicados (los diccionarios por tipo se combinan)."""
+    p = copy.deepcopy(PARAMETROS_POR_DEFECTO)
+    for clave, valor in (cambios or {}).items():
+        if clave not in p:
+            raise ValueError(f"parámetro desconocido: {clave!r}")
+        if isinstance(p[clave], dict):
+            if not isinstance(valor, dict):
+                raise ValueError(f"{clave} debe ser un objeto por tipo de agente, por ejemplo {p[clave]}")
+            p[clave].update(valor)
+        else:
+            p[clave] = valor
+    return p
+
+
+def cargar_parametros(ruta: str | Path) -> dict:
+    """Lee un JSON con los parámetros que cambian (los demás quedan por defecto)."""
+    with open(ruta, encoding="utf-8") as f:
+        return parametros_economicos(json.load(f))
+
+
+def _simular_combustible(trace: dict, parametros: dict | None):
+    p = parametros_economicos(parametros)
+    tipos = {a["id"]: a["tipo"] for a in trace["agentes"]}
+    for clave in ("capacidad_tanque", "consumo_por_celda", "consumo_por_tick_encendido"):
+        faltan = sorted({tp for tp in tipos.values() if tp not in p[clave]})
+        if faltan:
+            raise ValueError(f"no hay {clave} para el tipo de agente {faltan}")
+    capacidad = {a: float(p["capacidad_tanque"][tp]) for a, tp in tipos.items()}
+    nivel = dict(capacidad)
+    usado = {a: 0.0 for a in tipos}
+    comprado = dict(capacidad)  # el llenado inicial del tanque también se paga
+    recargas = {a: 0 for a in tipos}
+    minimo = dict(capacidad)
+    serie = {"tick": []}
+    serie.update({a: {"nivel": [], "usado_acumulado": [], "comprado_acumulado": []} for a in tipos})
+    anterior = None
+    for e in reconstruir(trace):
+        for a, tp in tipos.items():
+            if anterior is not None:
+                estado = e["agentes"][a]["estado"]
+                if _celda(anterior, a) != _celda(e, a):
+                    gasto = p["consumo_por_celda"][tp]
+                elif estado not in ESTADOS_MOTOR_APAGADO:
+                    gasto = p["consumo_por_tick_encendido"][tp]
+                else:
+                    gasto = 0.0
+                nivel[a] -= gasto
+                usado[a] += gasto
+                minimo[a] = min(minimo[a], nivel[a])
+                if estado in ESTADOS_MOTOR_APAGADO and nivel[a] < capacidad[a]:
+                    comprado[a] += capacidad[a] - nivel[a]
+                    nivel[a] = capacidad[a]
+                    recargas[a] += 1
+            serie[a]["nivel"].append(round(nivel[a], 4))
+            serie[a]["usado_acumulado"].append(round(usado[a], 4))
+            serie[a]["comprado_acumulado"].append(round(comprado[a], 4))
+        serie["tick"].append(e["tick"])
+        anterior = e
+    return p, serie, {"usado": usado, "comprado": comprado, "recargas": recargas, "minimo": minimo,
+                      "capacidad": capacidad}
+
+
+def series_combustible(trace: dict, parametros: dict | None = None) -> dict:
+    """Por tick y por agente: nivel del tanque, combustible usado y combustible comprado (acumulados).
+    {"tick": [...], agent_id: {"nivel": [...], "usado_acumulado": [...], "comprado_acumulado": [...]}}"""
+    return _simular_combustible(trace, parametros)[1]
+
+
+def metricas_economicas(trace: dict, parametros: dict | None = None) -> dict:
+    """Métricas de combustible y gasto calculadas desde el log.
+
+    - combustible_usado / combustible_comprado: por agente ({agent_id: litros}) y _total.
+      Comprado = tanque inicial completo + cada recarga hasta lleno al volver a la base.
+    - recargas: cuántas veces se recargó cada agente; combustible_minimo_en_tanque: el nivel más bajo.
+    - combustible_suficiente: False si algún tanque habría quedado por debajo de 0.
+    - costo_combustible = comprado_total x precio_por_litro; valor_grano_entregado = grano en la bodega x
+      valor_por_unidad_de_grano; balance = valor - costo.
+    """
+    p, _, r = _simular_combustible(trace, parametros)
+    entregado = list(reconstruir(trace))[-1]["entregado_total"]
+    usado_total = round(sum(r["usado"].values()), 4)
+    comprado_total = round(sum(r["comprado"].values()), 4)
+    costo = round(comprado_total * p["precio_por_litro"], 4)
+    valor = round(entregado * p["valor_por_unidad_de_grano"], 4)
+    return {
+        "combustible_usado": {a: round(v, 4) for a, v in r["usado"].items()},
+        "combustible_usado_total": usado_total,
+        "combustible_comprado": {a: round(v, 4) for a, v in r["comprado"].items()},
+        "combustible_comprado_total": comprado_total,
+        "recargas": dict(r["recargas"]),
+        "combustible_minimo_en_tanque": {a: round(v, 4) for a, v in r["minimo"].items()},
+        "combustible_suficiente": all(v >= 0 for v in r["minimo"].values()),
+        "costo_combustible": costo,
+        "valor_grano_entregado": valor,
+        "balance": round(valor - costo, 4),
     }

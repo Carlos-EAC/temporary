@@ -374,6 +374,9 @@ ORDEN_METRICAS = [
     "porcentaje_ocioso", "ticks_por_estado", "mensajes_enviados", "distancia_cosechadora_carro_promedio",
     "distancia_cosechadora_carro_minima", "distancia_cosechadora_carro_maxima", "grano_cosechado_total",
     "grano_esperado_total", "porcentaje_entregado",
+    "combustible_usado", "combustible_usado_total", "combustible_comprado", "combustible_comprado_total",
+    "recargas", "combustible_minimo_en_tanque", "combustible_suficiente", "costo_combustible",
+    "valor_grano_entregado", "balance",
 ]
 
 

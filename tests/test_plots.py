@@ -39,11 +39,11 @@ def con_nombre(trace, nombre):
     return otro
 
 
-def test_las_cinco_graficas_de_un_trace_se_generan(plots, tmp_path):
+def test_las_siete_graficas_de_un_trace_se_generan(plots, tmp_path):
     rutas = plots.graficas_de_un_trace(FIXTURE, tmp_path)
     assert [r.name for r in rutas] == [
         "1_carga_cosechadora.png", "2_linea_de_tiempo_estados.png", "3_ocioso_acumulado.png",
-        "4_distancia_cosechadora_carro.png", "5_grano_en_bodega.png",
+        "4_distancia_cosechadora_carro.png", "5_grano_en_bodega.png", "6_combustible.png", "7_gasto_y_valor.png",
     ]
     assert all(es_png(r) for r in rutas)
 
@@ -73,7 +73,8 @@ def test_comparacion_y_tabla_resumen(plots, tmp_path):
     lineas = Path(ruta_md).read_text(encoding="utf-8").splitlines()
     assert len(lineas) == 2 + 2  # encabezado, separador y una fila por escenario
     assert lineas[0].startswith("| Escenario | Tiempo de completación | Fin de la cosecha |")
-    assert lineas[2] == "| escenario_a | 49 | 44 | 23 | 46 | 32 | 1.9 | 0.8 | 0 | 2 | 3 | 8 | 100 |"
+    # costo: (300 + 45) + (100 + 24.25) = 469.25 litros a 1 $; valor: 8 de grano a 10 $ = 80; balance -389.25
+    assert lineas[2] == "| escenario_a | 49 | 44 | 23 | 46 | 32 | 1.9 | 0.8 | 0 | 2 | 3 | 8 | 100 | 469.25 | -389.25 |"
     assert " | 3 | 3 | 8 | 100 |" in lineas[3]  # B: 3 bloqueos en total (suma de ambos agentes)
 
 
@@ -113,6 +114,8 @@ def test_sin_esperas_las_graficas_no_fallan(plots, tmp_path):
     assert es_png(plots.grafica_ocioso_acumulado(trace, tmp_path / "ocioso.png"))
     assert es_png(plots.grafica_distancia(trace, tmp_path / "distancia.png"))
     assert es_png(plots.grafica_grano(trace, tmp_path / "grano.png"))
+    assert es_png(plots.grafica_combustible(trace, tmp_path / "combustible.png"))
+    assert es_png(plots.grafica_gasto(trace, tmp_path / "gasto.png"))
 
 
 def test_main_genera_graficas_comparacion_y_tabla(plots, tmp_path, capsys):
@@ -126,6 +129,6 @@ def test_main_genera_graficas_comparacion_y_tabla(plots, tmp_path, capsys):
     salida = tmp_path / "salida"
     for nombre in ("escenario_a", "escenario_b"):
         assert es_png(salida / nombre / "2_linea_de_tiempo_estados.png")
-    assert es_png(salida / "comparacion" / "6_comparacion_escenarios.png")
+    assert es_png(salida / "comparacion" / "8_comparacion_escenarios.png")
     assert (salida / "comparacion" / "resumen.csv").exists() and (salida / "comparacion" / "resumen.md").exists()
     assert str(salida / "comparacion" / "resumen.md") in capsys.readouterr().out

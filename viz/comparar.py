@@ -36,7 +36,7 @@ sys.path.insert(0, str(RAIZ / "src"))
 sys.path.insert(0, str(AQUI))
 
 import plots  # noqa: E402  (tokens de la paleta, estilo y métricas principales)
-from harvest_sim.telemetria import cargar_trace, comparar_corridas  # noqa: E402
+from harvest_sim.telemetria import cargar_parametros, cargar_trace, comparar_corridas  # noqa: E402
 
 # Antes y después de una misma cosa: un solo hue en dos tonos (claro = línea base, oscuro = nueva).
 COLOR_BASE = "#86b6ef"
@@ -152,7 +152,9 @@ def main(argv=None):
     parser.add_argument("nueva", help="trace.json de la corrida nueva, o carpeta con <escenario>/trace.json")
     parser.add_argument("--salida", default=str(SALIDA_POR_DEFECTO),
                         help="carpeta de salida (default: runs/comparacion_linea_base)")
+    parser.add_argument("--parametros", help="JSON con los parámetros de combustible y precios que cambian")
     args = parser.parse_args(argv)
+    parametros = cargar_parametros(args.parametros) if args.parametros else None
 
     try:
         pares, sin_pareja = emparejar(args.base, args.nueva)
@@ -168,7 +170,7 @@ def main(argv=None):
     comparaciones = {}
     for nombre, ruta_base, ruta_nueva in pares:
         try:
-            comparaciones[nombre] = comparar_corridas(cargar_trace(ruta_base), cargar_trace(ruta_nueva))
+            comparaciones[nombre] = comparar_corridas(cargar_trace(ruta_base), cargar_trace(ruta_nueva), parametros)
         except ValueError as exc:
             print(f"error en {nombre}: {exc}")
             return 1
