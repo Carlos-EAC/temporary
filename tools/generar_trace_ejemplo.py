@@ -7,11 +7,15 @@ métricas se desarrollen sin esperar la simulación real. Arma el archivo con el
 
 Convención: el tick 0 es el estado inicial (antes de cualquier paso); los pasos empiezan en el tick 1.
 
-Uso:  python tools/generar_trace_ejemplo.py
+Uso:
+    python tools/generar_trace_ejemplo.py                  # reescribe el fixture de las pruebas
+    python tools/generar_trace_ejemplo.py --escenarios     # tres escenarios de ejemplo en runs/ejemplo/
+    python tools/generar_trace_ejemplo.py --escenarios --salida otra/carpeta
 """
 
 from __future__ import annotations
 
+import argparse
 import math
 import sys
 from collections import deque
@@ -20,9 +24,17 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "src"))
 
-from harvest_sim.telemetria import TraceBuilder, escribir_trace, verificar_checksums  # noqa: E402
+from harvest_sim.telemetria import (  # noqa: E402
+    TraceBuilder,
+    calcular_metricas,
+    cargar_trace,
+    escribir_trace,
+    validar_trace,
+    verificar_checksums,
+)
 
 DESTINO = RAIZ / "tests" / "fixtures" / "trace_ejemplo.json"
+SALIDA_ESCENARIOS = RAIZ / "runs" / "ejemplo"
 H, C = "cosechadora_1", "carro_1"
 
 CONFIG = {
@@ -288,15 +300,60 @@ def generar(cfg=None):
     return b.construir()
 
 
-def main():
+def escenarios_de_ejemplo():
+    """Tres configuraciones de ejemplo (datos inventados, NO los escenarios reales de config/).
+
+    ejemplo_a: la del fixture (campo de 4 x 2, cosechadora de 3 y carro de 6, transferencia y descarga lentas).
+    ejemplo_b: campo más ancho (5 x 2), más capacidad (4 y 8) y transferencia más rápida.
+    ejemplo_c: el campo de A con transferencia y descarga más rápidas.
+    """
+    return {
+        "ejemplo_a": dict(CONFIG, nombre="ejemplo_a"),
+        "ejemplo_b": dict(CONFIG, nombre="ejemplo_b", ancho=5, capacidad_cosechadora=4, capacidad_carro=8,
+                          tasa_transferencia=2),
+        "ejemplo_c": dict(CONFIG, nombre="ejemplo_c", tasa_transferencia=2, tasa_descarga=3),
+    }
+
+
+def generar_escenarios(salida=SALIDA_ESCENARIOS):
+    """Escribe <salida>/<nombre>/trace.json para cada escenario de ejemplo y devuelve las rutas.
+    Cada trace se valida antes de escribirse."""
+    rutas = []
+    for nombre, cfg in escenarios_de_ejemplo().items():
+        trace = generar(cfg)
+        errores = validar_trace(trace)
+        if errores:
+            raise ValueError(f"el escenario {nombre} no es válido: {errores[:3]}")
+        ruta = Path(salida) / nombre / "trace.json"
+        escribir_trace(trace, ruta)
+        rutas.append(ruta)
+    return rutas
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Genera datos de ejemplo del trace 2.0 (no es la simulación real).")
+    parser.add_argument("--escenarios", action="store_true",
+                        help="genera los tres escenarios de ejemplo en lugar del fixture de las pruebas")
+    parser.add_argument("--salida", default=str(SALIDA_ESCENARIOS),
+                        help="carpeta para --escenarios (default: runs/ejemplo)")
+    args = parser.parse_args(argv)
+
+    if args.escenarios:
+        for ruta in generar_escenarios(args.salida):
+            m = calcular_metricas(cargar_trace(ruta))
+            print(f"escrito: {ruta}  (ocioso {m['tiempo_ocioso_cosechadora']} ticks, "
+                  f"completación {m['tiempo_completacion']} ticks)")
+        return 0
+
     trace = generar()
-    assert verificar_checksums(trace)
+    assert verificar_checksums(trace) and not validar_trace(trace)
     escribir_trace(trace, DESTINO)
     eventos = [e["tipo"] for t in trace["ticks"] for e in t["cambios"]]
     print(f"escrito: {DESTINO}")
     print(f"ticks totales: {trace['meta']['total_ticks']} | ticks con cambios: {len(trace['ticks'])}")
     print({tipo: eventos.count(tipo) for tipo in sorted(set(eventos))})
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
