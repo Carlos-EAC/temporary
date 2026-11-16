@@ -357,3 +357,334 @@ def calcular_metricas(trace: dict) -> dict:
         "grano_esperado_total": esperado,
         "porcentaje_entregado": round(100 * entregado / esperado, 2) if esperado else None,
     }
+
+
+# --- Validador del trace (contrato ejecutable del formato 2.0) -----------------------------------
+_CLAVES_TRACE = ["schema_version", "meta", "config", "mundo", "agentes", "ticks", "metricas"]
+_CLAVES_TICK = ["tick", "cambios", "checksum"]
+_ORIENTACIONES = ("N", "E", "S", "O")
+_TIPOS_AGENTE = ("cosechadora", "carro")
+_CAMPOS_EVENTO = {
+    "AGENTE": {"id": str, "set": dict},
+    "CELDA_COSECHADA": {"celda": list, "agente": str},
+    "DEPOSITO": {"agente": str, "cantidad": int, "entregado_total": int},
+    "BLOQUEO": {"agente": str},
+    "MENSAJE_ENVIADO": {"id": int, "tipo_mensaje": str, "de": str, "a": str, "payload": dict, "entrega_en": int},
+    "MENSAJE_ENTREGADO": {"id": int, "a": str},
+}
+
+
+def _es_entero(v) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _es_celda(v) -> bool:
+    return isinstance(v, list) and len(v) == 2 and all(_es_entero(c) for c in v)
+
+
+def _tiene_tipo(valor, tipo) -> bool:
+    return _es_entero(valor) if tipo is int else isinstance(valor, tipo)
+
+
+def validar_trace(trace) -> list[str]:
+    """Revisa que un trace cumpla el formato 2.0 y las reglas físicas que se pueden ver en el log.
+
+    Devuelve la lista de errores (vacía si el trace es válido); no se detiene en el primero. Cada mensaje
+    dice dónde está el problema, por ejemplo: "tick 14, evento 2 (DEPOSITO): entregado_total 7, se esperaba 6".
+
+    Revisa: estructura (claves y su orden, versión, meta, mundo, catálogo de agentes); ticks (arreglo
+    estrictamente creciente que empieza en 0, sin pasar de total_ticks, checksum correcto); eventos (tipo
+    conocido, campos obligatorios y sin campos extra, tipos de dato, orden por categoría); agentes (solo
+    pose, estado y carga; en el catálogo; completos en el tick 0; orientación válida; carga entre 0 y la
+    capacidad; dentro del mapa); mundo (celdas dentro del campo y cosechadas una sola vez, entregado_total
+    acumulado); mensajes (ids crecientes, entrega en el tick siguiente al envío y una sola vez); y las reglas
+    físicas R2 (un paso por tick), R3 (dos agentes nunca en la misma celda), R4 (no intercambian posiciones)
+    y R7 (grano cosechado = cargas + entregado) en cada tick.
+    """
+    errores: list[str] = []
+    error = errores.append
+    if not isinstance(trace, dict):
+        return ["el trace no es un objeto JSON"]
+
+    # --- Estructura del primer nivel ---
+    claves = list(trace)
+    faltan = [c for c in _CLAVES_TRACE if c not in trace]
+    sobran = [c for c in claves if c not in _CLAVES_TRACE]
+    if faltan:
+        error(f"faltan claves en el primer nivel: {faltan}")
+    if sobran:
+        error(f"claves no esperadas en el primer nivel: {sobran}")
+    if not faltan and not sobran and claves != _CLAVES_TRACE:
+        error(f"orden de las claves del primer nivel: {claves}; se esperaba {_CLAVES_TRACE}")
+    if trace.get("schema_version") != SCHEMA_VERSION:
+        error(f"schema_version es {trace.get('schema_version')!r}; se esperaba {SCHEMA_VERSION!r}")
+
+    meta = trace.get("meta")
+    total = None
+    if not isinstance(meta, dict):
+        error("meta debe ser un objeto con escenario, seed y total_ticks")
+    else:
+        for c in ("escenario", "seed", "total_ticks"):
+            if c not in meta:
+                error(f"meta: falta {c}")
+        if "total_ticks" in meta:
+            if _es_entero(meta["total_ticks"]) and meta["total_ticks"] >= 0:
+                total = meta["total_ticks"]
+            else:
+                error(f"meta: total_ticks debe ser un entero >= 0, es {meta['total_ticks']!r}")
+
+    mundo = trace.get("mundo")
+    ancho = alto = None
+    grano = 1
+    if not isinstance(mundo, dict):
+        error("mundo debe ser un objeto")
+        mundo = {}
+    else:
+        for c in ("ancho", "alto", "bodega", "bases", "grano_por_celda"):
+            if c not in mundo:
+                error(f"mundo: falta {c}")
+        if _es_entero(mundo.get("ancho")) and mundo["ancho"] >= 1:
+            ancho = mundo["ancho"]
+        elif "ancho" in mundo:
+            error(f"mundo: ancho debe ser un entero >= 1, es {mundo['ancho']!r}")
+        if _es_entero(mundo.get("alto")) and mundo["alto"] >= 2:
+            alto = mundo["alto"]
+        elif "alto" in mundo:
+            error(f"mundo: alto debe ser un entero >= 2, es {mundo['alto']!r}")
+        if "bodega" in mundo and not _es_celda(mundo["bodega"]):
+            error(f"mundo: bodega debe ser [x, y], es {mundo['bodega']!r}")
+        if "bases" in mundo and not (isinstance(mundo["bases"], dict)
+                                     and all(_es_celda(v) for v in mundo["bases"].values())):
+            error("mundo: bases debe ser un objeto {agent_id: [x, y]}")
+        if "grano_por_celda" in mundo:
+            if _es_entero(mundo["grano_por_celda"]) and mundo["grano_por_celda"] >= 1:
+                grano = mundo["grano_por_celda"]
+            else:
+                error(f"mundo: grano_por_celda debe ser un entero >= 1, es {mundo['grano_por_celda']!r}")
+
+    def dentro_del_mapa(x, y):
+        return ancho is None or alto is None or (0 <= x < ancho and 0 <= y < alto)
+
+    catalogo: dict[str, dict] = {}
+    agentes = trace.get("agentes")
+    if not isinstance(agentes, list):
+        error("agentes debe ser un arreglo")
+        agentes = []
+    for i, a in enumerate(agentes):
+        pref = f"agentes[{i}]"
+        if not isinstance(a, dict) or any(c not in a for c in ("id", "tipo", "capacidad", "base")):
+            error(f"{pref}: debe tener id, tipo, capacidad y base")
+            continue
+        if not isinstance(a["id"], str):
+            error(f"{pref}: id debe ser texto")
+            continue
+        if a["id"] in catalogo:
+            error(f"{pref}: id repetido {a['id']!r}")
+            continue
+        if a["tipo"] not in _TIPOS_AGENTE:
+            error(f"{pref}: tipo {a['tipo']!r} no es uno de {list(_TIPOS_AGENTE)}")
+        if not (_es_entero(a["capacidad"]) and a["capacidad"] >= 1):
+            error(f"{pref}: capacidad debe ser un entero >= 1, es {a['capacidad']!r}")
+        if not _es_celda(a["base"]):
+            error(f"{pref}: base debe ser [x, y], es {a['base']!r}")
+        elif isinstance(mundo.get("bases"), dict) and mundo["bases"].get(a["id"]) not in (None, a["base"]):
+            error(f"{pref}: base {a['base']} no coincide con mundo.bases ({mundo['bases'][a['id']]})")
+        catalogo[a["id"]] = a
+
+    # --- Ticks: forma, orden y checksum ---
+    ticks = trace.get("ticks")
+    if not isinstance(ticks, list):
+        error("ticks debe ser un arreglo")
+        return errores
+    por_tick: dict[int, list] = {}
+    anterior = None
+    for i, t in enumerate(ticks):
+        if not isinstance(t, dict) or list(t) != _CLAVES_TICK:
+            error(f"ticks[{i}]: debe tener exactamente {_CLAVES_TICK} en ese orden")
+            continue
+        n = t["tick"]
+        if not _es_entero(n):
+            error(f"ticks[{i}]: tick debe ser un entero, es {n!r}")
+            continue
+        if anterior is None and n != 0:
+            error(f"ticks[{i}]: el primer tick debe ser el 0, es {n}")
+        if anterior is not None and n <= anterior:
+            error(f"ticks[{i}]: los ticks deben ser estrictamente crecientes ({n} después de {anterior})")
+            continue
+        anterior = n
+        if total is not None and n > total:
+            error(f"tick {n}: es mayor que meta.total_ticks ({total})")
+            continue
+        if t["checksum"] != calcular_checksum(t):
+            error(f"tick {n}: el checksum no coincide (el tick está alterado o dañado)")
+        if not isinstance(t["cambios"], list):
+            error(f"tick {n}: cambios debe ser un arreglo")
+            continue
+        por_tick[n] = t["cambios"]
+    if not por_tick:
+        return errores
+    if total is None:
+        total = max(por_tick)
+
+    # --- Recorrido tick a tick: eventos, estado y reglas físicas ---
+    estado = {a: {} for a in catalogo}
+    celdas: set[tuple[int, int]] = set()
+    entregado = 0
+    enviados: dict[int, tuple] = {}
+    entregados: set[int] = set()
+    ultimo_id = 0
+    posiciones_previas = None
+
+    def agente_conocido(pref, nombre, campo="agente"):
+        if nombre not in catalogo:
+            error(f"{pref}: {campo} {nombre!r} no está en el catálogo de agentes")
+            return False
+        return True
+
+    for tick in range(total + 1):
+        ultima_categoria = -1
+        agentes_en_tick: set[str] = set()
+        for n, e in enumerate(por_tick.get(tick, []), 1):
+            pref = f"tick {tick}, evento {n}"
+            if not isinstance(e, dict):
+                error(f"{pref}: el evento debe ser un objeto")
+                continue
+            tipo = e.get("tipo")
+            if tipo not in _CAMPOS_EVENTO:
+                error(f"{pref}: tipo desconocido {tipo!r}")
+                continue
+            pref = f"{pref} ({tipo})"
+            campos = _CAMPOS_EVENTO[tipo]
+            faltantes = [c for c in campos if c not in e]
+            if faltantes:
+                error(f"{pref}: faltan campos {faltantes}")
+                continue
+            extra = sorted(set(e) - {"tipo"} - set(campos))
+            if extra:
+                error(f"{pref}: campos no esperados {extra}")
+            malos = [c for c, tp in campos.items() if not _tiene_tipo(e[c], tp)]
+            if malos:
+                error(f"{pref}: tipo de dato incorrecto en {malos}")
+                continue
+            if _CATEGORIA[tipo] < ultima_categoria:
+                error(f"{pref}: fuera de orden (dentro del tick van entregas, agentes, mundo y envíos)")
+            ultima_categoria = max(ultima_categoria, _CATEGORIA[tipo])
+
+            if tipo == "AGENTE":
+                ident, nuevos = e["id"], e["set"]
+                if not agente_conocido(pref, ident, "id"):
+                    continue
+                if ident in agentes_en_tick:
+                    error(f"{pref}: el agente {ident!r} aparece dos veces en el mismo tick")
+                agentes_en_tick.add(ident)
+                if not nuevos:
+                    error(f"{pref}: set vacío")
+                no_permitidos = sorted(set(nuevos) - set(_CAMPOS_AGENTE))
+                if no_permitidos:
+                    error(f"{pref}: campos no permitidos en set {no_permitidos} (solo pose, estado y carga)")
+                if "pose" in nuevos:
+                    p = nuevos["pose"]
+                    if not (isinstance(p, dict) and set(p) == {"x", "y", "orientacion"}
+                            and _es_entero(p["x"]) and _es_entero(p["y"])):
+                        error(f"{pref}: pose debe ser {{x, y, orientacion}} con x e y enteros")
+                    else:
+                        if p["orientacion"] not in _ORIENTACIONES:
+                            error(f"{pref}: orientacion {p['orientacion']!r} no es una de {list(_ORIENTACIONES)}")
+                        if not dentro_del_mapa(p["x"], p["y"]):
+                            error(f"{pref}: pose ({p['x']}, {p['y']}) fuera del mapa")
+                        estado[ident]["pose"] = (p["x"], p["y"])
+                if "estado" in nuevos:
+                    if isinstance(nuevos["estado"], str) and nuevos["estado"]:
+                        estado[ident]["estado"] = nuevos["estado"]
+                    else:
+                        error(f"{pref}: estado debe ser texto no vacío")
+                if "carga" in nuevos:
+                    c, cap = nuevos["carga"], catalogo[ident].get("capacidad")
+                    if not _es_entero(c) or c < 0 or (_es_entero(cap) and c > cap):
+                        error(f"{pref}: carga {c!r} debe ser un entero entre 0 y la capacidad ({cap})")
+                    else:
+                        estado[ident]["carga"] = c
+
+            elif tipo == "CELDA_COSECHADA":
+                agente_conocido(pref, e["agente"])
+                if not _es_celda(e["celda"]):
+                    error(f"{pref}: celda debe ser [x, y]")
+                    continue
+                x, y = e["celda"]
+                if not (dentro_del_mapa(x, y) and y >= 1):
+                    error(f"{pref}: celda ({x}, {y}) fuera del campo (el campo son las filas y >= 1)")
+                if (x, y) in celdas:
+                    error(f"{pref}: la celda ({x}, {y}) se cosecha dos veces")
+                celdas.add((x, y))
+
+            elif tipo == "DEPOSITO":
+                agente_conocido(pref, e["agente"])
+                if e["cantidad"] < 0:
+                    error(f"{pref}: cantidad negativa ({e['cantidad']})")
+                esperado = entregado + e["cantidad"]
+                if e["entregado_total"] != esperado:
+                    error(f"{pref}: entregado_total {e['entregado_total']}, se esperaba {esperado}")
+                entregado = e["entregado_total"]
+
+            elif tipo == "BLOQUEO":
+                agente_conocido(pref, e["agente"])
+
+            elif tipo == "MENSAJE_ENVIADO":
+                agente_conocido(pref, e["de"], "de")
+                agente_conocido(pref, e["a"], "a")
+                if e["id"] in enviados:
+                    error(f"{pref}: id {e['id']} repetido")
+                elif e["id"] <= ultimo_id:
+                    error(f"{pref}: id {e['id']} no es creciente (el anterior fue {ultimo_id})")
+                if e["entrega_en"] != tick + 1:
+                    error(f"{pref}: entrega_en {e['entrega_en']}, se esperaba {tick + 1} (el tick siguiente)")
+                enviados.setdefault(e["id"], (tick, e["a"], e["entrega_en"]))
+                ultimo_id = max(ultimo_id, e["id"])
+
+            elif tipo == "MENSAJE_ENTREGADO":
+                if e["id"] not in enviados:
+                    error(f"{pref}: el mensaje {e['id']} no corresponde a un envío previo")
+                    continue
+                _, destinatario, entrega_en = enviados[e["id"]]
+                if e["id"] in entregados:
+                    error(f"{pref}: el mensaje {e['id']} se entrega dos veces")
+                if tick != entrega_en:
+                    error(f"{pref}: el mensaje {e['id']} se entrega en el tick {tick}, se esperaba {entrega_en}")
+                if e["a"] != destinatario:
+                    error(f"{pref}: el mensaje {e['id']} se entrega a {e['a']!r} pero se envió a {destinatario!r}")
+                entregados.add(e["id"])
+
+        if tick == 0:
+            for a, campos_a in estado.items():
+                ausentes = [c for c in _CAMPOS_AGENTE if c not in campos_a]
+                if ausentes:
+                    error(f"tick 0: al agente {a!r} le faltan {ausentes} (el tick 0 es el estado inicial completo)")
+
+        # Reglas físicas: solo si todos los agentes tienen estado completo
+        if not catalogo or any(any(c not in s for c in _CAMPOS_AGENTE) for s in estado.values()):
+            continue
+        posiciones = {a: s["pose"] for a, s in estado.items()}
+        nombres = list(posiciones)
+        for i, a in enumerate(nombres):
+            for b in nombres[i + 1:]:
+                if posiciones[a] == posiciones[b]:
+                    error(f"tick {tick}: R3, {a} y {b} ocupan la misma celda {posiciones[a]}")
+                elif (posiciones_previas and posiciones_previas[a] == posiciones[b]
+                      and posiciones_previas[b] == posiciones[a]):
+                    error(f"tick {tick}: R4, {a} y {b} intercambian posiciones")
+        if posiciones_previas:
+            for a in nombres:
+                if _manhattan(posiciones_previas[a], posiciones[a]) > 1:
+                    error(f"tick {tick}: R2, {a} se mueve de {posiciones_previas[a]} a {posiciones[a]} "
+                          "(más de una celda)")
+        cosechado = len(celdas) * grano
+        en_agentes = sum(s["carga"] for s in estado.values())
+        if cosechado != en_agentes + entregado:
+            error(f"tick {tick}: R7, grano cosechado {cosechado} distinto de cargas {en_agentes} "
+                  f"+ entregado {entregado}")
+        posiciones_previas = posiciones
+
+    for ident, (enviado_en, _, entrega_en) in sorted(enviados.items()):
+        if ident not in entregados and entrega_en <= total:
+            error(f"el mensaje {ident} (enviado en el tick {enviado_en}) nunca se entregó")
+    return errores
