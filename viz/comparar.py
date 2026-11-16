@@ -154,7 +154,11 @@ def main(argv=None):
                         help="carpeta de salida (default: runs/comparacion_linea_base)")
     parser.add_argument("--parametros", help="JSON con los parámetros de combustible y precios que cambian")
     args = parser.parse_args(argv)
-    parametros = cargar_parametros(args.parametros) if args.parametros else None
+    try:
+        parametros = cargar_parametros(args.parametros) if args.parametros else None
+    except (OSError, ValueError) as exc:  # archivo inexistente, JSON inválido o parámetro desconocido
+        print(f"error en --parametros: {exc}")
+        return 1
 
     try:
         pares, sin_pareja = emparejar(args.base, args.nueva)

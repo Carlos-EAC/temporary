@@ -431,7 +431,11 @@ def main(argv=None):
     parser.add_argument("--salida", help="carpeta de salida (por defecto, junto a cada trace y en <runs>/comparacion)")
     parser.add_argument("--parametros", help="JSON con los parámetros de combustible y precios que cambian")
     args = parser.parse_args(argv)
-    parametros = cargar_parametros(args.parametros) if args.parametros else None
+    try:
+        parametros = cargar_parametros(args.parametros) if args.parametros else None
+    except (OSError, ValueError) as exc:  # archivo inexistente, JSON inválido o parámetro desconocido
+        print(f"error en --parametros: {exc}")
+        return 1
 
     traces, generados = {}, []
     for ruta in args.trace:

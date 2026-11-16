@@ -137,3 +137,17 @@ def test_comparacion_con_el_sentido_del_gasto():
     assert comp["metricas"]["recargas.carro_1"]["sentido"] == "neutro"
     fila = comp["metricas"]["combustible_usado_total"]
     assert fila["nueva"] < fila["base"] and fila["resultado"] == "mejora"
+
+
+def test_las_herramientas_avisan_si_los_parametros_estan_mal(tmp_path, capsys):
+    pytest.importorskip("matplotlib")
+    for script in ("plots", "comparar"):
+        spec = importlib.util.spec_from_file_location(script, RAIZ / "viz" / f"{script}.py")
+        modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modulo)
+        argumentos = [str(FIXTURE)] if script == "plots" else [str(FIXTURE), str(FIXTURE)]
+        assert modulo.main(argumentos + ["--salida", str(tmp_path), "--parametros", str(tmp_path / "no_existe.json")]) == 1
+        malo = tmp_path / "malo.json"
+        malo.write_text('{"precio_diesel": 3}', encoding="utf-8")
+        assert modulo.main(argumentos + ["--salida", str(tmp_path), "--parametros", str(malo)]) == 1
+        assert "error en --parametros" in capsys.readouterr().out
