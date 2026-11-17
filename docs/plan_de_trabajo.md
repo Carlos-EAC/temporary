@@ -1,227 +1,60 @@
-# Plan de trabajo — Primera entrega (lunes 16 de noviembre)
+# Plan de trabajo — Entrega del martes 17 de noviembre (antes de la clase)
 
-Reparto para 6 personas, dependencias, cronograma y flujo de git. Complementa a la [especificación](especificacion_primera_entrega.md), que dice **qué** construir; aquí se dice **quién** lo hace, **en qué orden** y **cómo se junta**.
+Reparto, dependencias, cronograma y flujo de git. **El detalle de cada persona está en su guía, en [`docs/equipo/`](equipo/README.md)**: qué archivos escribe, qué debe hacer cada función, qué pruebas deben pasar y cuándo está listo. La [especificación](especificacion_primera_entrega.md) dice **qué** se construye; este plan dice **quién**, **en qué orden** y **cómo se junta**.
+
+> **Actualizado el 16 de noviembre.** La entrega se movió al martes 17 antes de la clase, con la rúbrica nueva del anuncio de Canvas (PDF en `reto/`). La parte de Datos está terminada; el resto del código está por hacer. El formato del log es el **trace 2.1** y el contrato está en [`docs/equipo/README.md`](equipo/README.md) §3.
 
 ---
 
 ## 1. Resumen en una pantalla
 
-| Persona | Rama | Archivos que le pertenecen | Necesita para arrancar | Desbloquea a |
+| Persona | Rama | Archivos que le pertenecen | Estado | Guía |
 |---|---|---|---|---|
-| **Carlos** (Mundo) | `branch-carlos` | `config.py`, `mundo.py`, `simulacion.py` | Nada para arrancar. `simulacion.py` necesita al final los agentes, el buzón y `TraceBuilder` | Emilio, Oswaldo, Ilan |
-| **Oswaldo** (Rutas) | `branch-oswaldo` | `rutas.py`, `carro.py`, `tests/test_rutas.py`, `tests/test_carro.py` | Nada para `rutas.py`. `carro.py` necesita el buzón (Emilio) y el layout (Carlos), o fakes | Carlos, Emilio |
-| **Emilio** (Coordinación) | `branch-emilio` | `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test_cosechadora.py` | Nada para el buzón. `cosechadora.py` necesita el layout (Carlos) y `rutas.py` (Oswaldo), o fakes | Oswaldo, Carlos |
-| **Joel** (Datos) | `branch-joel` | `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/test_telemetria.py` | Nada. Es quien destraba al visor con el fixture | Giovanni, Carlos |
-| **Giovanni** (Interfaz) | `branch-giovanni` | `viz/viewer.py`, `cli.py`, `tests/test_viewer.py` | El fixture de Joel (para el visor) y `simulacion.py` (para la CLI) | — |
-| **Ilan** (Calidad) | `branch-ilan` | `tests/test_mundo.py`, `tests/test_config.py`, `tests/test_integracion.py`, `.github/`, `scripts/`, `README.md`, `docs/autoevaluacion.md` | Nada para escribir los tests (salen de la especificación) | Todos (CI y revisión) |
+| **Carlos** (Mundo) | `branch-carlos` | `config.py`, `mundo.py`, `simulacion.py`, `config/escenario_*.json` | Por hacer | [carlos/guia.md](equipo/carlos/guia.md) |
+| **Oswaldo** (Rutas y carro) | `branch-oswaldo` | `rutas.py`, `carro.py`, `tests/test_rutas.py`, `tests/test_carro.py` | Por hacer | [oswaldo/guia.md](equipo/oswaldo/guia.md) |
+| **Emilio** (Mensajes y cosechadora) | `branch-emilio` | `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test_cosechadora.py` | Por hacer | [emilio/guia.md](equipo/emilio/guia.md) |
+| **Joel** (Datos) | `branch-joel` | `src/harvest_sim/datos/`, `telemetria.py` (fachada), `viz/plots.py`, `tools/`, `config/experimentos/`, `tests/fixtures/` y las pruebas de Datos | **Hecho**, salvo las corridas reales | [joel/estado.md](equipo/joel/estado.md) |
+| **Giovanni** (Interfaz) | `branch-giovanni` | `viz/viewer.py`, `viz/dashboard.py`, `cli.py`, `tests/test_viewer.py`, `tests/test_dashboard.py` | Por hacer | [giovanni/guia.md](equipo/giovanni/guia.md) |
+| **Ilan** (Calidad) | `branch-ilan` | `tests/test_mundo.py`, `tests/test_config.py`, `tests/test_integracion.py`, `.github/`, `scripts/`, `README.md`, `docs/autoevaluacion.md` | Por hacer | [ilan/guia.md](equipo/ilan/guia.md) |
 
-**Regla de oro:** cada archivo tiene un solo dueño. Si necesitas un cambio en un archivo ajeno, se lo pides al dueño (por chat o con un issue); no lo editas tú.
-
----
-
-## 2. Qué cambió en el esqueleto para este reparto
-
-Respecto a lo que subiste a GitHub, el esqueleto tiene estos ajustes (hay que hacer commit y push antes de que todos ramifiquen, ver §7):
-
-- Nuevo `src/harvest_sim/rutas.py` con BFS, vecinos, celda objetivo y `siguiente_paso`, como funciones puras. Así Oswaldo trabaja sin depender del mundo.
-- `Mundo` suma `registrar`, `ocupadas`, `bloqueadas_fijas`, `grano_cosechado`, `ancho`, `alto`, `entregado`, `grano_total`, y la función `duracion_ticks` a nivel de módulo.
-- `telemetria.py` suma `TraceBuilder`, `cargar_trace` y `verificar_checksums`.
-- Los tests se reparten por dueño: `test_rutas.py`, `test_carro.py`, `test_cosechadora.py`, `test_viewer.py` son nuevos. `test_agentes.py` desapareció (sus tests se movieron a los archivos anteriores y a `test_integracion.py`).
-- Nuevas carpetas: `tests/fixtures/`, `scripts/`, `tools/`.
+**Regla de oro:** cada archivo tiene un solo dueño. Si necesitas un cambio en un archivo ajeno, se lo pides al dueño; no lo editas tú.
 
 ---
 
-## 3. Reunión del viernes (45 min, todos)
+## 2. Qué cambió respecto al plan anterior
 
-Objetivo: confirmar las interfaces para que cada quien trabaje sin esperar. Es la única reunión obligatoria. Todo lo de abajo ya está propuesto; la reunión es para confirmar o corregir, no para diseñar desde cero.
+- **Fecha:** martes 17 antes de la clase (antes, lunes 16). Se entrega un **PDF** con la rúbrica nueva: dashboard obligatorio, 3 escenarios justificados, barrido de parámetros, comparación contra método base y análisis crítico ([README del equipo](equipo/README.md) §5).
+- **Formato del log: trace 2.1** (decisiones del 2026-11-15 y 2026-11-16). Cambia lo que cada quien entrega:
+  - `Mundo.cambios()` y `mundo.tick_actual` **ya no se usan**: el mundo junta sus eventos y los entrega con `drenar_eventos()`; se agrega `registrar_bloqueo(agent_id)`.
+  - `Buzon.registro()` **ya no se usa**: el buzón entrega `drenar_eventos()` con `MENSAJE_ENVIADO` (con `performativa`) y `MENSAJE_ENTREGADO`.
+  - `registro()` de los agentes **sin** `intencion` ni `objetivo`; el vocabulario de `intencion.accion` del plan anterior desaparece.
+  - `mundo.descripcion()` trae `obstaculos`.
+- **Configuración:** sección `obstaculos` (vacía) y una sola fórmula del grano esperado en `harvest_sim.datos.campo` ([README del equipo](equipo/README.md) §4).
+- **Datos:** `telemetria.py` pasó a ser el paquete `harvest_sim/datos/` (los imports viejos siguen funcionando); métricas para cualquier número de agentes; 6 gráficas por corrida; ejecutor de experimentos.
+- **Nuevo para Giovanni:** el dashboard (`viz/dashboard.py`).
 
-### 3.1 Interfaces a confirmar
+---
 
-```python
-# Atributos públicos de TODO agente (los lee el Mundo, el visor no los usa):
-#   agent_id: str        posicion: tuple[int, int]     estado: Enum (EstadoCosechadora | EstadoCarro)
-#   carga: int           capacidad: int
+## 3. Contrato de interfaces
 
-# --- Carlos: mundo.py ---
-Mundo(config)
-mundo.registrar(agente)                       # su posición inicial es su base
-mundo.ancho, mundo.alto, mundo.bodega         # bodega == (0, 0)
-mundo.base_de(agent_id) -> Celda
-mundo.camino_serpentina() -> list[Celda]
-mundo.posicion(agent_id) -> Celda             # lee agente.posicion
-mundo.estado_de(agent_id) -> str              # lee agente.estado.value
-mundo.ocupadas(excepto: str) -> set[Celda]    # celdas de los DEMÁS agentes
-mundo.bloqueadas_fijas(agent_id) -> set[Celda]  # {bodega} para cosechadoras, vacío para carros (R9)
-mundo.vecinos(celda) -> list[Celda]           # delega en rutas.vecinos
-mundo.ruta_bfs(origen, destino, bloqueadas) -> list[Celda] | None   # delega en rutas.bfs
-mundo.cosechar(agent_id, celda) -> int        # suma a agente.carga; R8
-mundo.transferir(de, a, cantidad) -> int      # δ (R6); lanza ValueError si no son vecinos (R5)
-mundo.depositar(agent_id) -> int              # carga del carro -> entregado
-mundo.grano_cosechado() -> int
-mundo.tick_actual                             # lo fija simulacion.py al inicio de cada tick
-mundo.descripcion() -> dict                   # ancho, alto, bodega, bases, grano_por_celda (va en trace["mundo"])
-mundo.cambios() -> list[dict]                 # CELDA_COSECHADA y DEPOSITO, en orden (va en trace["cambios"])
-duracion_ticks(cantidad, tasa) -> int         # ceil(cantidad / tasa), mínimo 1
-
-# --- Oswaldo: rutas.py (funciones puras) ---
-vecinos(celda, ancho, alto) -> list[Celda]    # orden N, E, S, O
-bfs(origen, destino, ancho, alto, bloqueadas) -> list[Celda] | None   # sin origen, con destino; [] si origen == destino
-elegir_celda_objetivo(origen, objetivo, ancho, alto, bloqueadas, evitar) -> Celda | None
-siguiente_paso(pos, ruta, destino, ancho, alto, ocupadas, bloqueadas_fijas) -> (Celda | None, list[Celda])
-
-# --- Emilio: mensajes.py ---
-buzon.enviar(msg) -> int                      # asigna id; se entrega en tick+1
-buzon.entregar(tick)                          # al inicio de cada tick
-buzon.leer(agent_id) -> Mensaje | None        # FIFO
-buzon.hay_pendientes(agent_id) -> bool
-buzon.registro() -> list[dict]                # id, tipo, emisor, receptor, tick_envio, tick_entrega, payload
-                                              # además imprime cada envío y entrega con logging (§6.3 de la especificación)
-
-# --- Joel: telemetria.py ---
-TraceBuilder(config_dict)
-builder.agregar_tick(tick, registros)         # registros SIN checksum; el builder lo agrega
-builder.construir(mundo, cambios, mensajes, metricas=None) -> dict   # mundo = mundo.descripcion(); cambios = mundo.cambios()
-calcular_metricas(trace) -> dict              # desde el log
-cargar_trace(ruta) / escribir_trace(trace, ruta) / verificar_checksums(trace) -> bool
-
-# --- Carlos: simulacion.py (usa todo lo anterior) ---
-ejecutar(config) -> dict                      # devuelve el trace completo, con métricas
-```
-
-### 3.2 Forma del registro de agente (`agente.registro(tick)`, sin checksum)
-
-```python
-{"tick": 12, "agent_id": "carro_1", "tipo": "carro",
- "pose": {"x": 3, "y": 2, "orientacion": "S"},
- "estado": "YENDO_A_COSECHADORA",
- "carga": {"actual": 0, "capacidad": 20},
- "intencion": {"accion": "MOVER", "celdas": [[3, 3], [4, 3]]},   # listas, no tuplas
- "objetivo": "cosechadora_1"}                                       # id | "bodega" | "base" | None
-```
-
-### 3.3 Vocabulario de `intencion.accion`
-
-Joel calcula métricas leyendo estos valores, así que todos deben usar exactamente estos nombres:
-
-| Valor | Cuándo |
-|---|---|
-| `MOVER` | El agente se mueve este tick |
-| `COSECHAR` | La cosechadora cosecha una celda |
-| `ESPERAR` | Espera por una causa normal (`LLENA_ESPERANDO`, `ESPERANDO_TRANSFERENCIA`) |
-| `ESPERAR_BLOQUEO` | Espera porque la siguiente celda está ocupada (§4.2). Alimenta `ticks_bloqueados` |
-| `TRANSFERIR` | Estado `TRANSFIRIENDO` |
-| `DESCARGAR` | Estado `DESCARGANDO` |
-| `NINGUNA` | `EN_BASE` sin trabajo, o `FIN` |
-
-### 3.4 Acuerdos de trabajo
-
-- Ramas, PR y revisión como en §7.
-- Nadie edita archivos ajenos (§1).
-- Todo lo no especificado se decide con la opción más simple y se escribe en `docs/decisiones.md`.
-- Canal de chat único del equipo para avisos de cambios de interfaz.
+Está en [`docs/equipo/README.md`](equipo/README.md) §3 (trace 2.1 y lo que entrega cada módulo) y en la especificación §10. Las firmas de cada función están en los docstrings de cada archivo del esqueleto y en la guía de su dueño.
 
 ---
 
 ## 4. Tareas por persona
 
-Cada tarea lleva su criterio de **listo**. Las tareas están en orden de ejecución. Las marcadas con ⚡ destraban a otra persona: hazlas primero.
+Cada guía trae las tareas en orden, con tiempo estimado, firma de cada función, ejemplo, pruebas que deben pasar y definición de listo. Resumen:
 
-### Carlos — Mundo (`branch-carlos`)
+| Persona | Tareas (en orden) | Medible: listo cuando |
+|---|---|---|
+| Carlos | Config con obstáculos → layout del mundo ⚡ → grano y eventos → catálogo → `simulacion.ejecutar` → escenarios → PDF §1–2 | `test_config.py`, `test_mundo.py` y `test_integracion.py` pasan; el validador da `OK` en los 3 traces |
+| Oswaldo | `rutas.py` ⚡ → dobles de prueba → `carro.py` → `registro()` → dobles por reales → PDF §2 | `test_rutas.py` (9) y `test_carro.py` (6) pasan sin `skip` |
+| Emilio | `Buzon` ⚡ → dobles → `cosechadora.py` → `registro()` → dobles por reales → PDF §1 | `test_mensajes.py` (5) y `test_cosechadora.py` (8) pasan sin `skip` |
+| Giovanni | Visor → CLI → dashboard → PDF §6 | `test_viewer.py` y `test_dashboard.py` pasan; `python -m harvest_sim.cli config/escenario_a.json` genera trace y gráficas; el dashboard muestra 3 paneles |
+| Ilan | CI → pruebas de config y mundo → integración → scripts → README → autoevaluación → PDF §3 y §8 | CI verde; sin `skip` en sus pruebas; `verificar_instalacion.sh` pasa en limpio |
+| Joel | Corridas reales, gráficas, experimento y tabla → PDF §4, §5 y §7 → armar y subir el PDF final | Resultados de los 3 escenarios y del barrido en `runs/` |
 
-Archivos: `config.py`, `mundo.py`, `simulacion.py`.
-
-1. **Config.** `cargar_config(ruta)` con las validaciones del §3 de la especificación, lanzando `ValueError` con mensaje claro.
-   *Listo cuando:* los tres JSON cargan y `test_config_invalida` de Ilan pasa.
-2. ⚡ **Layout del mundo.** `Mundo.__init__`, `registrar`, `base_de`, `bodega`, `ancho`, `alto`, casillas con `n` y `m` genéricos (no escribir `(1,0)` ni `(2,0)` a mano), `bloqueadas_fijas`, `ocupadas`, `posicion`, `estado_de`.
-   *Listo cuando:* `test_casillas_de_inicio` pasa. Súbelo a `development` cuanto antes: Emilio y Oswaldo lo necesitan.
-3. ⚡ **Serpentina** y `duracion_ticks`.
-   *Listo cuando:* `test_serpentina_cubre_todo_el_campo` y `test_duracion_ticks` pasan.
-4. **Grano y cambios.** `cosechar` (R8), `transferir` (R5 y R6), `depositar`, `grano_cosechado`, `grano_total`, `entregado`. `cosechar` y `depositar` además **anotan el cambio** (`CELDA_COSECHADA` / `DEPOSITO`, con `tick_actual`), y agregas `descripcion()` y `cambios()` (§6.1 de la especificación).
-   *Listo cuando:* los tests de R5, R6, R8, de depósito y `test_cosechar_registra_cambio` pasan.
-5. **Delegar rutas.** `Mundo.vecinos` y `Mundo.ruta_bfs` llaman a `rutas.py` de Oswaldo.
-6. **`simulacion.ejecutar`.** Crea mundo, buzón y agentes; ejecuta el bucle del §4.1 (entregar, cosechadora, carro, snapshot, término); fija `mundo.tick_actual` en cada tick, imprime por consola los cambios de estado y los depósitos (§6.3 de la especificación), arma el trace con `TraceBuilder` (pasándole `mundo.descripcion()` y `mundo.cambios()`) y llama `calcular_metricas`. Usa `max_ticks` como tope.
-   *Listo cuando:* los tres escenarios terminan y cumplen las condiciones del §5.4. Hasta que lleguen los agentes reales, pruébalo con agentes falsos que terminen en pocos ticks.
-
-**Respaldo:** Oswaldo.
-
-### Oswaldo — Rutas y carro (`branch-oswaldo`)
-
-Archivos: `rutas.py`, `carro.py`, `tests/test_rutas.py`, `tests/test_carro.py`.
-
-1. ⚡ **`rutas.py`.** `vecinos` y `bfs` primero (los necesitan Carlos y Emilio), luego `elegir_celda_objetivo` y `siguiente_paso` (§4.2 y §5.2). Funciones puras, sin importar `Mundo`.
-   *Listo cuando:* `tests/test_rutas.py` pasa completo, con el determinismo verificado.
-2. **Fakes para tus pruebas.** Un `Mundo` falso y un `Buzon` falso mínimos dentro de `test_carro.py`. Así avanzas sin esperar a Carlos ni a Emilio.
-3. **`carro.py`.** La tabla de estados del §5.2 completa: `EN_BASE` revisa su fila solo ahí; BFS con celdas ocupadas bloqueadas; celda objetivo según `elegir_celda_objetivo`; lectura de `cantidad` al recibir `TRANSFERENCIA_TERMINADA`; descarga con `duracion_ticks`.
-   *Listo cuando:* `tests/test_carro.py` pasa con los fakes.
-4. **`registro()` del carro** con `intencion.accion` del vocabulario del §3.3.
-5. **Cambiar los fakes por los reales** cuando lleguen `mundo.py` y `mensajes.py` a `development`, y ajustar lo que haga falta.
-
-**Respaldo:** Carlos.
-
-### Emilio — Mensajería y cosechadora (`branch-emilio`)
-
-Archivos: `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test_cosechadora.py`.
-
-1. ⚡ **`Buzon`.** Fila FIFO por agente, `id` entero creciente, entrega en `tick+1`, `registro()` para el log, y un registro por `logging` de cada envío y cada entrega (formato del §6.3 de la especificación).
-   *Listo cuando:* `tests/test_mensajes.py` pasa (incluido `test_log_de_consola_de_mensajes`). Es lo primero que haces: Oswaldo, Carlos y Joel lo necesitan.
-2. **Fakes para tus pruebas.** Un `Mundo` falso mínimo en `test_cosechadora.py`.
-3. **`cosechadora.py`.** La tabla de estados del §5.1: viaje al campo (con `siguiente_paso` de Oswaldo), cosecha, evaluación de carga (llena o parcial final), espera del carro en `ESPERANDO_TRANSFERENCIA`, transferencia con `duracion_ticks` y `cantidad`, regreso a base y `FIN`. Si la siguiente celda de la serpentina está ocupada, espera con `ESPERAR_BLOQUEO`.
-   *Listo cuando:* `tests/test_cosechadora.py` pasa con los fakes.
-4. **`registro()` de la cosechadora.**
-5. **Cambiar los fakes por los reales** cuando lleguen `mundo.py` y `rutas.py`.
-
-**Respaldo:** Oswaldo.
-
-### Joel — Datos (`branch-joel`)
-
-Archivos: `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/test_telemetria.py`.
-
-1. ⚡ **Fixture de ejemplo (viernes noche o sábado temprano).** Un script `tools/generar_trace_ejemplo.py` que genere `tests/fixtures/trace_ejemplo.json`: unos 60 ticks inventados pero coherentes con la especificación (los dos agentes en sus bases, un ciclo completo, mensajes con `id`, checksums bien calculados, y las secciones `mundo` y `cambios`). El script es **determinista (sin aleatoriedad)** y se versionan tanto el script como el JSON que genera. Con esto Giovanni dibuja el visor sin esperar la simulación, y tú desarrollas gráficas y métricas.
-   *Listo cuando:* `verificar_checksums` es `True` sobre el fixture y Giovanni lo puede abrir.
-2. ⚡ **Telemetría: `TraceBuilder`, `escribir_trace` (byte a byte reproducible), `cargar_trace`, `verificar_checksums`.** La telemetría es el registro automático de lo que ocurre en la simulación (el `trace.json`) y las funciones que lo arman, escriben y verifican. Carlos usa `TraceBuilder` en `simulacion.py`.
-   *Listo cuando:* `tests/test_telemetria.py` pasa.
-3. **`calcular_metricas(trace)`** del §6.2, **solo desde el log**. Sugerencias de cálculo:
-   - `tiempo_ocioso_cosechadora`: snapshots con estado `LLENA_ESPERANDO`.
-   - `ticks_bloqueados`: snapshots con `intencion.accion == "ESPERAR_BLOQUEO"`, por agente.
-   - `distancia_*`: ticks en que la pose cambió respecto al tick anterior.
-   - `colisiones`: ticks con la misma celda o con intercambio de posiciones.
-   - `num_ciclos` y `espera_por_ciclo`: a partir de los mensajes `LLENA` y de los tramos de `LLENA_ESPERANDO`.
-   - `tick_fin_cosecha`: `tick_envio` del último `TRANSFERENCIA_TERMINADA`.
-   - `grano_total_entregado`: suma de `cantidad` de los cambios `DEPOSITO`.
-   - `utilizacion_carro`: fracción de ticks con el carro fuera de `EN_BASE`.
-   Cualquier definición que elijas se anota en `docs/decisiones.md`. Pruébalo sobre el fixture, con valores que puedas calcular a mano.
-4. **`viz/plots.py`**: las cuatro gráficas del §7.2, más una tabla resumen (CSV y Markdown) que compare los tres escenarios.
-5. **Cuando llegue la simulación real** (domingo): corre los tres escenarios, revisa que las métricas tengan sentido y prepara los resultados de la entrega.
-
-**Respaldo:** Giovanni.
-
-### Giovanni — Interfaz (`branch-giovanni`)
-
-Archivos: `viz/viewer.py`, `cli.py`, `tests/test_viewer.py`.
-
-1. **Visor con el fixture de Joel.** Mientras llega, arranca con un diccionario hecho a mano dentro del propio visor para la ventana y el grid. Mínimo del §7.1: grid, celdas cosechadas vs. por cosechar, bodega y bases marcadas, agentes con orientación, barra de carga, estado en texto, número de tick, estela. Controles: pausa, paso a paso, velocidad.
-   El visor **no importa nada de `harvest_sim`**: solo lee el JSON. Toma el grid y las bases de `mundo`, y pinta las celdas cosechadas aplicando `cambios` a medida que avanza el tick (no las deduce de las posiciones).
-   *Listo cuando:* reproduce el fixture de principio a fin.
-2. **`tests/test_viewer.py`**: prueba de humo sin ventana (`SDL_VIDEODRIVER=dummy`) que dibuja varios cuadros del fixture.
-3. **`cli.py`.** Cablea `cargar_config` → `ejecutar` → `escribir_trace` → gráficas, crea `runs/<escenario>/`, y devuelve un código de salida distinto de 0 si algo falla. Opciones `--sin-plots`, `--silencioso` y `--detallado`; la CLI configura el nivel de `logging` (§6.3 de la especificación).
-   *Listo cuando:* `python -m harvest_sim.cli config/escenario_a.json` genera `trace.json`. Depende de que `simulacion.py` funcione (domingo); mientras tanto prueba con un `ejecutar` falso.
-4. **Preguntas de integración con Unity** (si hay tiempo): una nota breve `docs/integracion_unity.md` con las cuatro preguntas de la propuesta (animar un movimiento, cargar un JSON en tiempo de ejecución, convertir una celda a posición 3D, incrustar la vista en una página). No se implementa Unity en esta entrega.
-
-**Respaldo:** Joel.
-
-### Ilan — Calidad (`branch-ilan`)
-
-Archivos: `tests/test_mundo.py`, `tests/test_config.py`, `tests/test_integracion.py`, `.github/`, `scripts/`, `README.md`, `docs/autoevaluacion.md`.
-
-1. **CI.** `.github/workflows/ci.yml` que, en cada push y PR, instale con `pip install -r requirements.txt` y `pip install -e .`, y ejecute `pytest -q` con Python 3.12 (y `SDL_VIDEODRIVER=dummy`). Primero esto: da una señal verde o roja a todos los demás.
-   *Listo cuando:* corre en GitHub sobre `development`.
-2. **Tests desde la especificación.** Escritos por quien no implementa el código: `test_mundo.py`, `test_config.py::test_config_invalida` (parametrizado con cada validación del §3) y `test_integracion.py` (R3, R4, R7 en cada tick, terminación, reproducibilidad, duración de estados, mensaje pendiente, `test_cambios_reconstruyen_el_mapa`). Se suben con `skip` y los vas **activando** a medida que cada módulo llega a `development`: un PR pequeño por módulo.
-   *Listo cuando:* en `development` no queda ningún `skip` en tus archivos.
-3. **Scripts.** `scripts/correr_todos.sh` (corre los tres escenarios y las gráficas) y `scripts/verificar_instalacion.sh` (crea un entorno virtual nuevo, instala, corre `pytest` y un escenario).
-4. **Revisión.** Revisas la conformidad con la especificación en los PR grandes y mantienes el formato de `docs/decisiones.md`. Cuando haya conflicto entre lo que dice la especificación y lo que hizo alguien, lo señalas.
-5. **Verificación final (domingo noche y lunes).** `verificar_instalacion.sh` en una máquina o carpeta limpia, README al día, y `docs/autoevaluacion.md` con la lista de verificación de la rúbrica (la del §12 de la especificación más la lista previa a la entrega del documento del curso), marcando lo que falta.
-
-**Respaldo:** Carlos.
+⚡ = destraba a otra persona: hazlo primero y súbelo en cuanto pase.
 
 ---
 
@@ -229,75 +62,61 @@ Archivos: `tests/test_mundo.py`, `tests/test_config.py`, `tests/test_integracion
 
 ```mermaid
 flowchart LR
-  J1["Joel: fixture de ejemplo"] --> E1["Giovanni: visor"]
-  J1 --> J3["Joel: metricas y plots"]
-  O1["Oswaldo: rutas.py"] --> C5["Carlos: delegar rutas en Mundo"]
+  O1["Oswaldo: rutas.py"] --> C2["Carlos: Mundo (delegar rutas)"]
   O1 --> O3["Oswaldo: carro.py"]
   O1 --> M3["Emilio: cosechadora.py"]
-  C2["Carlos: config, layout, serpentina"] --> M3
-  C2 --> O3
-  C2 --> I2["Ilan: activar tests de mundo"]
+  C1["Carlos: config y layout"] --> M3
+  C1 --> O3
+  C1 --> I2["Ilan: pruebas de config y mundo"]
   M1["Emilio: Buzon"] --> O3
   M1 --> M3
-  M1 --> C6["Carlos: simulacion.py"]
-  J2["Joel: TraceBuilder"] --> C6
-  M3 --> C6
+  M3 --> C6["Carlos: simulacion.ejecutar"]
   O3 --> C6
-  C6 --> INT["Integracion: corrida completa"]
-  INT --> J5["Joel: metricas con log real"]
-  INT --> E3["Giovanni: CLI y visor con log real"]
-  INT --> I3["Ilan: activar tests de integracion"]
+  J["Joel: TraceBuilder, métricas, gráficas (hecho)"] --> C6
+  C6 --> INT["Corrida completa de los 3 escenarios"]
+  INT --> J5["Joel: resultados y experimento"]
+  INT --> G3["Giovanni: CLI, visor y dashboard con log real"]
+  INT --> I3["Ilan: pruebas de integración"]
+  J5 --> PDF["PDF de la entrega"]
+  G3 --> PDF
+  I3 --> PDF
 ```
 
-### Quién puede empezar ya, sin esperar a nadie
-
-| Persona | Arranca con | Por qué no necesita esperar |
+| Quién puede empezar ya | Con qué | Por qué no espera |
 |---|---|---|
-| Carlos | Config y layout | Solo usa la especificación |
-| Oswaldo | `rutas.py` | Son funciones puras |
+| Oswaldo | `rutas.py` | Funciones puras |
 | Emilio | `Buzon` | No depende de nada |
-| Joel | El fixture de ejemplo | Solo usa el formato del log |
-| Giovanni | Ventana y grid del visor con datos de mano | No necesita el log todavía |
-| Ilan | CI y tests | Salen de la especificación |
-
-### Quién espera a quién (y con qué se desatora)
+| Carlos | Configuración y layout | Solo usa la especificación |
+| Giovanni | Visor y dashboard | Hay traces de ejemplo (`tools/generar_trace_ejemplo.py --escenarios`) |
+| Ilan | CI y pruebas | Salen de la especificación |
 
 | Tarea que espera | Espera a | Mientras tanto |
 |---|---|---|
-| `carro.py` completo | `Buzon` (Emilio) y layout (Carlos) | Fakes dentro de `test_carro.py` |
-| `cosechadora.py` completa | Layout (Carlos) y `rutas.py` (Oswaldo) | Fakes dentro de `test_cosechadora.py` |
-| Visor completo | Fixture de Joel | Datos de mano |
-| `simulacion.ejecutar` | Agentes, buzón y `TraceBuilder` | Agentes falsos que terminen rápido |
-| CLI | `ejecutar` y `escribir_trace` | `ejecutar` falso |
-| Métricas reales | Corrida completa | Fixture |
+| `carro.py` y `cosechadora.py` completos | `Buzon`, layout y `rutas.py` | Dobles de prueba en sus tests |
+| `simulacion.ejecutar` | Agentes y buzón | Agentes falsos que terminen rápido |
+| CLI | `ejecutar` | `ejecutar` falso que devuelva el fixture |
+| Resultados reales | Corrida completa | Todo probado con datos de ejemplo |
 
 ---
 
 ## 6. Cronograma
 
-Hoy es viernes 13; la entrega es el lunes 16. Las horas son orientativas; lo importante es el orden y los hitos.
-
 | Momento | Hito | Quién |
 |---|---|---|
-| **Viernes noche** | Reunión de 45 min (§3). Se hace commit y push de los cambios del esqueleto a `main` y `development`; cada quien crea o actualiza su rama | Todos |
-| Viernes noche | CI funcionando; fixture de Joel (puede pasar al sábado temprano); `rutas.py` con `vecinos` y `bfs` | Ilan, Joel, Oswaldo |
-| **Sábado mañana** | Buzón, config, layout del mundo y `bfs` en `development` | Emilio, Carlos, Oswaldo |
-| Sábado mediodía | Serpentina, `duracion_ticks`, fixture de Joel disponible; Giovanni ya dibuja el fixture | Carlos, Joel, Giovanni |
-| **Sábado tarde** | `cosechadora.py` y `carro.py` pasan sus tests con fakes; funciones de grano del mundo listas | Emilio, Oswaldo, Carlos |
-| **Sábado noche** | **Hito 1:** una corrida de extremo a extremo, aunque sea fea (`ejecutar` con los agentes reales) | Carlos con Emilio y Oswaldo |
-| **Domingo mañana** | `calcular_metricas` y `plots` sobre el log real; CLI funcionando; Ilan activa los tests de integración y corrige lo que falle | Joel, Giovanni, Ilan |
-| Domingo tarde | Visor con el log real; gráficas de los tres escenarios; arreglo de bugs que salgan de los tests | Todos |
-| **Domingo noche** | **Congelamiento:** solo se aceptan correcciones de errores, no funciones nuevas | Todos |
-| **Lunes mañana** | `development` pasa CI; `verificar_instalacion.sh` en entorno limpio; resultados de los tres escenarios; merge `development` → `main` con etiqueta `v0.1-entrega1` | Ilan y Joel |
+| **Lunes tarde** | `rutas.py`, `Buzon`, configuración y layout del mundo en `development`; CI verde; visor leyendo los traces de ejemplo | Oswaldo, Emilio, Carlos, Ilan, Giovanni |
+| **Lunes noche** | Agentes con sus pruebas pasando (dobles); grano y eventos del mundo; pruebas de mundo activadas | Oswaldo, Emilio, Carlos, Ilan |
+| **Lunes, antes de dormir** | **Hito 1:** `simulacion.ejecutar` corre los 3 escenarios (aunque sea feo) y el validador da `OK` | Carlos, con Emilio y Oswaldo |
+| **Martes temprano** | Corridas reales, gráficas, experimento y tabla; CLI; visor y dashboard con el log real; pruebas de integración sin `skip` | Joel, Giovanni, Ilan |
+| **Martes, mediodía** | Cada quien le manda a Joel su sección del PDF; **congelamiento del código** (solo correcciones) | Todos |
+| **Martes, antes de la clase** | PDF armado y subido a Canvas; `development` → `main` con etiqueta `v0.1-entrega1` | Joel (PDF), Ilan y Joel (merge) |
 
 ### Qué se recorta si el tiempo aprieta (en este orden)
 
-1. La nota de Unity de Giovanni.
-2. Funciones extra del visor (estela, velocidad ajustable); queda el reproductor básico.
-3. Las gráficas 3 y 4 de Joel (quedan la 1 y la 2, más la tabla de métricas).
-4. Escenarios B y C: se entrega con el A completo y los otros dos como configuración sin analizar.
+1. Funciones extra del visor (estela, velocidad); queda el reproductor básico.
+2. Animación del panel del entorno del dashboard; quedan cuadros fijos.
+3. El experimento de barrido (queda la comparación entre los 3 escenarios).
 
-**No se recorta:** reglas físicas con tests, log v1.0 con checksum, métricas, reproducibilidad y el README que funcione.
+**No se recorta:** simulación completa de los 3 escenarios, reglas físicas con pruebas, trace válido, métricas y gráficas, dashboard (obligatorio) y README que funcione.
 
 ---
 
@@ -307,11 +126,11 @@ Hoy es viernes 13; la entrega es el lunes 16. Las horas son orientativas; lo imp
 
 | Rama | Para qué | Quién escribe |
 |---|---|---|
-| `main` | Lo que se entrega. Solo se toca el lunes | Se actualiza por PR desde `development` |
+| `main` | Lo que se entrega. Solo se toca el martes antes de la clase | Se actualiza por PR desde `development` |
 | `development` | Integración: aquí se junta el trabajo de todos | Solo por PR desde las ramas personales |
 | `branch-carlos`, `branch-oswaldo`, `branch-emilio`, `branch-joel`, `branch-giovanni`, `branch-ilan` | Una por persona | Su dueño |
 
-### 7.2 Diagrama de versiones (ejemplo de cómo se verá el fin de semana)
+### 7.2 Diagrama de versiones (ejemplo de cómo se ve la integración)
 
 ```mermaid
 gitGraph
@@ -381,7 +200,7 @@ gitGraph
 La idea que muestra el diagrama:
 
 - El trabajo fluye siempre **rama personal → `development`** por pull request, y **`development` → rama personal** cuando necesitas lo de los demás.
-- `main` se actualiza una sola vez, el lunes, con todo ya integrado y probado.
+- `main` se actualiza una sola vez, el martes, con todo ya integrado y probado.
 - Nadie hace push directo a `development` ni a `main`.
 
 ### 7.3 Rutina de cada sesión de trabajo
@@ -417,8 +236,8 @@ git push origin branch-TU-NOMBRE
    En los PR grandes (agentes, simulación) Ilan hace además una pasada de conformidad con la especificación.
 3. **CI en verde** antes de hacer merge. Si CI falla por un test que no es tuyo, avisa a su dueño.
 4. **Merge con "Merge commit"** (no squash), para que el historial del diagrama se conserve.
-5. **Si dependes de algo que aún no llega a `development`:** no copies el archivo de otra persona ni hagas merge de su rama; usa un fake dentro de tus tests (§5) y cambia al real cuando llegue.
-6. **Si cambias una interfaz del §3.1:** avisa en el chat **antes** de subir el PR y anótalo en `docs/decisiones.md`.
+5. **Si dependes de algo que aún no llega a `development`:** no copies el archivo de otra persona ni hagas merge de su rama; usa un doble de prueba dentro de tus tests (§5) y cambia al real cuando llegue.
+6. **Si cambias una interfaz del contrato (`docs/equipo/README.md` §3):** avisa en el chat **antes** de subir el PR y anótalo en `docs/decisiones.md`.
 7. **Protección de ramas** (la configura Joel como dueño del repo, en *Settings → Branches*): exigir PR, una aprobación y CI en verde para `main` y `development`.
 
 ### 7.5 Resolver un conflicto
@@ -444,7 +263,7 @@ Antes de pedir revisión, marca todo:
 - [ ] Hice merge de `origin/development` en mi rama y no hay conflictos.
 - [ ] `pytest` pasa y los tests de mi módulo ya no están en `skip`.
 - [ ] Solo toqué archivos míos (o avisé de la excepción).
-- [ ] Respeto las firmas del §3.1 y el vocabulario del §3.3.
+- [ ] Respeto el contrato ([`docs/equipo/README.md`](equipo/README.md) §3) y el vocabulario de `harvest_sim/datos/formato.py`.
 - [ ] Si tomé una decisión no cubierta por la especificación, la anoté en `docs/decisiones.md`.
 - [ ] No dejé parámetros escritos en el código; todo viene de la configuración.
 
@@ -454,20 +273,20 @@ Antes de pedir revisión, marca todo:
 
 | Riesgo | Señal | Qué hacer |
 |---|---|---|
-| Integración tardía | A las 24 h nada corre junta | Hito 1 del sábado noche: una corrida fea pero completa. Si Emilio u Oswaldo no llegan, Carlos usa agentes falsos para validar el bucle |
-| Se atrasa una persona | Su PR no llega a la hora del hito | Su respaldo (§4) toma la tarea; se avisa en el chat |
+| Integración tardía | Lunes en la noche nada corre junto | Carlos prueba el bucle con agentes falsos; Emilio y Oswaldo priorizan que sus agentes terminen, aunque falten casos |
+| Se atrasa una persona | Su PR no llega al hito | Su respaldo toma la tarea (Carlos ↔ Oswaldo, Emilio ↔ Oswaldo, Giovanni ↔ Joel, Ilan ↔ Carlos); se avisa en el chat |
+| El trace no valida | `tools/validar_trace.py` da errores | El mensaje dice el tick, el evento y el campo; compara con `tests/fixtures/trace_ejemplo.json` y la guía de tu módulo |
 | Interfaz que cambia a mitad | Alguien cambia una firma | Regla 6 del §7.4: avisar antes y anotar |
-| Las métricas no coinciden con lo esperado | Valores raros en el fixture o en la corrida | Joel y Ilan verifican a mano un ciclo corto; se corrige la definición, no se ajustan los datos |
-| Conflictos de git | Merge con muchas marcas | §7.5 y preguntar al dueño del archivo |
-| El visor no alcanza | Domingo tarde sin visor funcional | Recortes del §6 |
+| No alcanza el tiempo para el PDF | Martes a mediodía sin secciones | Cada sección se escribe con lo que haya; Joel completa al armar el documento |
 
 ---
 
-## 10. Qué se entrega el lunes
+## 10. Qué se entrega el martes
 
-1. Repositorio con `main` actualizado y la etiqueta `v0.1-entrega1`.
-2. `python -m harvest_sim.cli config/escenario_X.json` funciona para los tres escenarios y genera `trace.json` y gráficas.
-3. `pytest` pasa completo, sin `skip` en los tests de reglas.
-4. Visor que reproduce un log.
-5. Tabla y gráfica de métricas de los tres escenarios.
-6. README que funciona en un entorno limpio, y `docs/decisiones.md` con lo decidido durante el fin de semana.
+1. **PDF en Canvas** con las 8 secciones de la rúbrica nueva ([README del equipo](equipo/README.md) §5).
+2. Repositorio con `main` actualizado y la etiqueta `v0.1-entrega1`.
+3. `python -m harvest_sim.cli config/escenario_X.json` funciona para los 3 escenarios y genera `trace.json` y gráficas.
+4. `pytest` pasa completo, sin `skip` en las pruebas de reglas.
+5. Visor que reproduce un log y **dashboard** con los tres paneles.
+6. Resultados: tabla y gráficas de los 3 escenarios y del experimento de barrido.
+7. README que funciona en un entorno limpio, y `docs/decisiones.md` al día.
