@@ -53,22 +53,6 @@ class Mundo:
         """Grano cosechado acumulado, para verificar la conservación R7."""
         raise NotImplementedError("Carlos: Mundo.grano_cosechado")
 
-    # --- Descripción y cambios para el log (§6.1) -----------------------------
-    tick_actual: int     # lo fija simulacion.py al inicio de cada tick
-
-    def descripcion(self) -> dict:
-        """Parte estática para trace["mundo"]: ancho, alto, bodega, bases
-        ({agent_id: [x, y]}) y grano_por_celda. Celdas como listas, no tuplas."""
-        raise NotImplementedError("Carlos: Mundo.descripcion")
-
-    def cambios(self) -> list[dict]:
-        """Lista cronológica para trace["cambios"]. `cosechar` y `depositar` agregan cada
-        cambio al ocurrir, con `tick_actual`:
-          {"tick": t, "tipo": "CELDA_COSECHADA", "celda": [x, y], "agente": id}
-          {"tick": t, "tipo": "DEPOSITO", "agente": id, "cantidad": n}
-        """
-        raise NotImplementedError("Carlos: Mundo.cambios")
-
     # --- Layout ---------------------------------------------------------
     def base_de(self, agent_id: str) -> Celda:
         raise NotImplementedError("Bloque A: Mundo.base_de")

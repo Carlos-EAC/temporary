@@ -52,14 +52,3 @@ def test_deposito_actualiza_entregado():
 @pendiente
 def test_duracion_ticks():
     """ceil(cantidad / tasa), mínimo 1: (10,2)->5, (3,2)->2, (1,4)->1."""
-
-
-@pendiente
-def test_cosechar_registra_cambio():
-    """cosechar agrega {tick, tipo: CELDA_COSECHADA, celda, agente}; depositar agrega
-    {tick, tipo: DEPOSITO, agente, cantidad}; el tick es mundo.tick_actual."""
-
-
-@pendiente
-def test_descripcion_del_mundo():
-    """descripcion() trae ancho, alto, bodega, bases (con listas, no tuplas) y grano_por_celda."""

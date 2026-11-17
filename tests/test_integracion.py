@@ -62,9 +62,3 @@ def test_reproducibilidad():
 @pendiente
 def test_grano_entregado_igual_al_del_campo():
     """metricas.grano_total_entregado == ancho * (alto - 1) * grano_por_celda."""
-
-
-@pendiente
-def test_cambios_reconstruyen_el_mapa():
-    """Aplicando los `cambios` del log al estado inicial se obtiene el mapa final: todas las celdas
-    del campo cosechadas, cada una una sola vez, con ticks no decrecientes (§6.1)."""
