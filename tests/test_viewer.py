@@ -141,3 +141,72 @@ def test_fixture_y_tres_ejemplos_del_equipo(viewer):
         depositos = [e["entregado_total"] for t in trace["ticks"] for e in t["cambios"] if e["tipo"] == "DEPOSITO"]
         assert rep.entregado == depositos[-1]
         assert len(rep.cosechadas) == trace["mundo"]["ancho"] * (trace["mundo"]["alto"] - 1)
+
+
+# CLI pertenece al mismo bloque de interfaz; sus dobles quedan en este archivo asignado.
+@pytest.fixture
+def cli_preparada(monkeypatch):
+    from harvest_sim import cli
+    from types import SimpleNamespace
+    config = SimpleNamespace(nombre="escenario_prueba")
+    trace = json.loads((RAIZ / "tests/fixtures/trace_ejemplo.json").read_text())
+    monkeypatch.setattr(cli, "cargar_config", lambda ruta: config)
+    monkeypatch.setattr(cli, "ejecutar", lambda cfg: trace)
+    return cli, config, trace
+
+
+def test_cli_genera_trace_y_graficas_desde_otro_directorio(cli_preparada, monkeypatch, tmp_path):
+    cli, config, trace = cli_preparada
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["config.json", "--salida", "resultados"]) == 0
+    salida = tmp_path / "resultados" / config.nombre
+    assert json.loads((salida / "trace.json").read_text()) == trace
+    assert len(list((salida / "plots").glob("*.png"))) == 6
+
+
+def test_cli_sin_plots_no_lanza_subproceso(cli_preparada, monkeypatch, tmp_path):
+    cli, config, trace = cli_preparada
+    def prohibido(*args, **kwargs):
+        pytest.fail("--sin-plots no debe generar gráficas")
+    monkeypatch.setattr(cli.subprocess, "run", prohibido)
+    assert cli.main(["config.json", "--salida", str(tmp_path), "--sin-plots"]) == 0
+    assert (tmp_path / config.nombre / "trace.json").exists()
+
+
+@pytest.mark.parametrize("etapa,excepcion", [
+    ("cargar_config", ValueError("configuración inválida")),
+    ("ejecutar", RuntimeError("se alcanzó max_ticks")),
+    ("escribir_trace", OSError("sin espacio"))])
+def test_cli_informa_fallos(cli_preparada, monkeypatch, tmp_path, capsys, etapa, excepcion):
+    cli, _, _ = cli_preparada
+    def fallar(*args):
+        raise excepcion
+    monkeypatch.setattr(cli, etapa, fallar)
+    assert cli.main(["config.json", "--salida", str(tmp_path)]) == 1
+    assert str(excepcion) in capsys.readouterr().err
+    assert not list(tmp_path.rglob("trace.json"))
+
+
+def test_cli_fallo_de_plots_no_se_reporta_como_exito(cli_preparada, monkeypatch, tmp_path, capsys):
+    cli, _, _ = cli_preparada
+    def fallar(*args, **kwargs):
+        raise cli.subprocess.CalledProcessError(2, "plots.py")
+    monkeypatch.setattr(cli.subprocess, "run", fallar)
+    assert cli.main(["config.json", "--salida", str(tmp_path)]) == 1
+    assert "plots.py" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("opciones,nivel", [([], 20), (["--silencioso"], 30), (["--detallado"], 10)])
+def test_cli_niveles_de_logging(cli_preparada, monkeypatch, tmp_path, opciones, nivel):
+    cli, _, _ = cli_preparada
+    llamadas = []
+    monkeypatch.setattr(cli.logging, "basicConfig", lambda **kwargs: llamadas.append(kwargs))
+    assert cli.main(["config.json", "--salida", str(tmp_path), "--sin-plots", *opciones]) == 0
+    assert llamadas == [{"level": nivel, "format": "%(message)s"}]
+
+
+def test_cli_rechaza_nombre_con_escape_de_carpeta(cli_preparada, tmp_path, capsys):
+    cli, config, _ = cli_preparada
+    config.nombre = "../fuera"
+    assert cli.main(["config.json", "--salida", str(tmp_path)]) == 1
+    assert "sin rutas" in capsys.readouterr().err
