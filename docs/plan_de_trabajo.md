@@ -47,12 +47,12 @@ Cada guía trae las tareas en orden, con tiempo estimado, firma de cada función
 
 | Persona | Tareas (en orden) | Medible: listo cuando |
 |---|---|---|
-| Carlos | Config con obstáculos → layout del mundo ⚡ → grano y eventos → catálogo → `simulacion.ejecutar` → escenarios → PDF §1–2 y armado | `test_config.py`, `test_mundo.py` y `test_integracion.py` pasan; el validador da `OK` en los 3 traces |
+| Carlos | Config con obstáculos → layout del mundo ⚡ → grano y eventos → catálogo → `simulacion.ejecutar` → escenarios → PDF §1–2 | `test_config.py`, `test_mundo.py` y `test_integracion.py` pasan; el validador da `OK` en los 3 traces |
 | Oswaldo | `rutas.py` ⚡ → dobles de prueba → `carro.py` → `registro()` → dobles por reales → PDF §2 | `test_rutas.py` (9) y `test_carro.py` (6) pasan sin `skip` |
 | Emilio | `Buzon` ⚡ → dobles → `cosechadora.py` → `registro()` → dobles por reales → PDF §1 | `test_mensajes.py` (5) y `test_cosechadora.py` (8) pasan sin `skip` |
 | Giovanni | Visor → CLI → dashboard → PDF §6 | `test_viewer.py` y `test_dashboard.py` pasan; `python -m harvest_sim.cli config/escenario_a.json` genera trace y gráficas; el dashboard muestra 3 paneles |
 | Ilan | CI → pruebas de config y mundo → integración → scripts → README → autoevaluación → PDF §3 y §8 | CI verde; sin `skip` en sus pruebas; `verificar_instalacion.sh` pasa en limpio |
-| Joel | Corridas reales, gráficas, experimento y tabla → PDF §4, §5 y §7 | Resultados de los 3 escenarios y del barrido en `runs/` |
+| Joel | Corridas reales, gráficas, experimento y tabla → PDF §4, §5 y §7 → armar y subir el PDF final | Resultados de los 3 escenarios y del barrido en `runs/` |
 
 ⚡ = destraba a otra persona: hazlo primero y súbelo en cuanto pase.
 
@@ -107,8 +107,8 @@ flowchart LR
 | **Lunes noche** | Agentes con sus pruebas pasando (dobles); grano y eventos del mundo; pruebas de mundo activadas | Oswaldo, Emilio, Carlos, Ilan |
 | **Lunes, antes de dormir** | **Hito 1:** `simulacion.ejecutar` corre los 3 escenarios (aunque sea feo) y el validador da `OK` | Carlos, con Emilio y Oswaldo |
 | **Martes temprano** | Corridas reales, gráficas, experimento y tabla; CLI; visor y dashboard con el log real; pruebas de integración sin `skip` | Joel, Giovanni, Ilan |
-| **Martes, mediodía** | Cada quien deja su sección del PDF; **congelamiento del código** (solo correcciones) | Todos |
-| **Martes, antes de la clase** | PDF armado y subido a Canvas; `development` → `main` con etiqueta `v0.1-entrega1` | Carlos (PDF), Ilan y Joel (merge) |
+| **Martes, mediodía** | Cada quien le manda a Joel su sección del PDF; **congelamiento del código** (solo correcciones) | Todos |
+| **Martes, antes de la clase** | PDF armado y subido a Canvas; `development` → `main` con etiqueta `v0.1-entrega1` | Joel (PDF), Ilan y Joel (merge) |
 
 ### Qué se recorta si el tiempo aprieta (en este orden)
 
@@ -277,7 +277,7 @@ Antes de pedir revisión, marca todo:
 | Se atrasa una persona | Su PR no llega al hito | Su respaldo toma la tarea (Carlos ↔ Oswaldo, Emilio ↔ Oswaldo, Giovanni ↔ Joel, Ilan ↔ Carlos); se avisa en el chat |
 | El trace no valida | `tools/validar_trace.py` da errores | El mensaje dice el tick, el evento y el campo; compara con `tests/fixtures/trace_ejemplo.json` y la guía de tu módulo |
 | Interfaz que cambia a mitad | Alguien cambia una firma | Regla 6 del §7.4: avisar antes y anotar |
-| No alcanza el tiempo para el PDF | Martes a mediodía sin secciones | Cada sección se escribe con lo que haya; Joel y Carlos completan |
+| No alcanza el tiempo para el PDF | Martes a mediodía sin secciones | Cada sección se escribe con lo que haya; Joel completa al armar el documento |
 
 ---
 

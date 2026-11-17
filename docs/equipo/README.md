@@ -49,7 +49,7 @@ Ilan: CI + pruebas desde la especificación (no espera)
 | Lunes noche | `carro.py` y `cosechadora.py` con dobles de prueba; funciones de grano y eventos del mundo | Pruebas de agentes pasando |
 | Lunes noche (tarde) | `simulacion.ejecutar` y `cli.py` | **Una corrida completa de los 3 escenarios**, aunque sea fea |
 | Martes temprano | Corridas reales, gráficas, experimentos, visor y dashboard con el log real, pruebas de integración sin `skip` | Todo junto en `development` |
-| Martes, antes de la clase | PDF armado y subido; `development` → `main` | Entrega |
+| Martes, antes de la clase | Joel arma y sube el PDF; `development` → `main` | Entrega |
 
 **Si te atoras más de 30 minutos, avisa en el chat.** Mejor una corrida fea que corre que piezas perfectas aisladas.
 
@@ -127,7 +127,7 @@ Fuente: anuncio de Canvas en `reto/` (PDF «Mejoras a la presentación de Semana
 
 | Criterio (puntos) | Qué pide | Sección del PDF | Responsable (escribe) | Insumo |
 |---|---|---|---|---|
-| 1. Formulación (10) | Problema, variables, supuestos, indicadores, arquitectura del agente y comunicación | 1. Problema y arquitectura | Carlos (editor), con Emilio (mensajes y performativas) | Especificación §1–§5, [ontologia.md](../ontologia.md) |
+| 1. Formulación (10) | Problema, variables, supuestos, indicadores, arquitectura del agente y comunicación | 1. Problema y arquitectura | Carlos, con Emilio (mensajes y performativas) | Especificación §1–§5, [ontologia.md](../ontologia.md) |
 | 2. Modelado del entorno (15) | Grid 2D, elementos, reglas, parámetros modificables | 2. Entorno | Carlos y Oswaldo | Especificación §2–§4, configuraciones |
 | 3. Implementación (15) | Ejecutable, separado en configuración, modelo, experimentos, datos y visualización | 3. Implementación | Ilan | Estructura del repo, README |
 | 4. Diseño experimental (15) | 3 escenarios justificados, barrido de parámetros, repeticiones | 4. Experimentos | Joel | `tools/correr_experimento.py`, especificación §8 |
@@ -136,7 +136,7 @@ Fuente: anuncio de Canvas en `reto/` (PDF «Mejoras a la presentación de Semana
 | 7. Análisis crítico (10) | Por qué un escenario es mejor, sensibilidad, límites | 7. Análisis | Joel, con todos | Resultados |
 | 8. Reproducibilidad (10) | Código, scripts, README, configuraciones, resultados, conclusiones | 8. Reproducibilidad y conclusiones | Ilan | `scripts/`, README |
 
-Cada responsable deja su sección (texto e imágenes) en una carpeta compartida **antes del martes a mediodía**; Carlos arma el PDF.
+Cada responsable le manda a Joel su sección (texto e imágenes) **antes del martes a mediodía**. **Joel arma y sube el documento final.**
 
 ## 6. Comandos que ya funcionan
 

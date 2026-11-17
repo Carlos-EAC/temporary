@@ -125,9 +125,9 @@ def ejecutar(config):
 
 Revisa que los tres escenarios den resultados distintos y que todos tengan una carga parcial final (§8 de la especificación). Si C no provoca espera por carro ocupado, regístralo en `docs/decisiones.md`.
 
-### 7. PDF: secciones 1 y 2, y armado — 1 h (martes)
+### 7. PDF: secciones 1 y 2 — 45 min (martes)
 
-Secciones «Problema y arquitectura» (con Emilio) y «Entorno» (con Oswaldo); armas el PDF final con las secciones de todos (ver [README del equipo](../README.md) §5).
+Secciones «Problema y arquitectura» (con Emilio) y «Entorno» (con Oswaldo). Mándaselas a Joel antes del martes a mediodía: él arma el documento final (ver [README del equipo](../README.md) §5).
 
 ---
 

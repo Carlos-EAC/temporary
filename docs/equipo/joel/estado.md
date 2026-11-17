@@ -34,6 +34,7 @@ python tools/generar_trace_ejemplo.py                           # regenera el fi
 1. Correr los tres escenarios, validar los traces y generar gráficas, tabla y experimento.
 2. Cambiar el fixture por una corrida corta de la simulación real (el generador de ejemplo queda como herramienta de prueba).
 3. Escribir las secciones 4 (diseño experimental), 5 (métricas y resultados) y 7 (análisis crítico) del PDF.
+4. Juntar las secciones de todos (llegan antes del martes a mediodía), armar el documento final y subirlo a Canvas.
 
 ## Retirado de esta entrega (en el historial de `branch-joel`)
 

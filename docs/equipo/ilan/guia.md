@@ -61,9 +61,9 @@ Las reglas R2, R3, R4 y R7 las revisas tú sobre corridas completas (el validado
 - `scripts/correr_todos.sh`: corre los tres escenarios con la CLI, valida los traces (`python tools/validar_trace.py runs/escenario_*/trace.json`), genera las gráficas y la comparación (`python viz/plots.py runs/escenario_*/trace.json`), corre el experimento (`python tools/correr_experimento.py config/experimentos/tasa_transferencia.json`) y el dashboard. Termina con error si algo falla (`set -euo pipefail`).
 - `scripts/verificar_instalacion.sh`: entorno virtual nuevo en una carpeta temporal, instala, corre `pytest` y `correr_todos.sh`.
 
-### 5. README — 45 min
+### 5. README — 30 min
 
-Instalación, cómo correr todo (`scripts/correr_todos.sh`), estructura de carpetas (incluido `src/harvest_sim/datos/`, `config/experimentos/`, `docs/equipo/`), dónde quedan los resultados, que la simulación es determinista a propósito, y la tabla de dueños actualizada (los archivos de Joel ahora son `src/harvest_sim/datos/`, `viz/plots.py`, `tools/` y sus pruebas). Recomienda `pip install -e .` (los scripts de `tools/` y `viz/` también corren sin instalar).
+El README ya documenta la instalación, la estructura, el reparto y cómo usar la parte de Datos (lo actualizó Joel el 16 de noviembre). Tú lo mantienes al día: cuando funcionen la CLI, el visor y el dashboard, quita las marcas «[por implementar]», agrega `scripts/correr_todos.sh` como forma de correr todo, dónde quedan los resultados y la sección de verificación en un entorno limpio.
 
 ### 6. Autoevaluación — 30 min (martes)
 
