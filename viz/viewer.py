@@ -93,7 +93,7 @@ def dibujar(rep, velocidad=8, pausa=True):
     my = max(370, 140 + len(catalogo) * 105)
     lineas = []
     for e in rep.mensajes:
-        mensaje = f"#{e['id']} {e['tipo_mensaje']} ({e.get('performativa', '')}) {e['de']} → {e['a']} | entrega t={e['entrega_en']} | {e['payload']}"
+        mensaje = f"#{e['id']} {e['tipo_mensaje']} ({e.get('performativa', '')}) {e['de']} -> {e['a']} | entrega t={e['entrega_en']} | {e['payload']}"
         lineas.extend(textwrap.wrap(mensaje, 43))
     lineas = lineas or ["Sin envíos en este tick."]
     superficie = pygame.Surface((panel_x + 420, max(620, mapa_h + 280, my + 70 + len(lineas) * 23)))
@@ -160,8 +160,8 @@ def dibujar(rep, velocidad=8, pausa=True):
         x, y = 28 + (i % 2) * 220, ly + (i // 2) * 27
         pygame.draw.rect(superficie, color, (x, y, 14, 14))
         texto(etiqueta, x + 22, y)
-    texto("Espacio: pausa   ← / →: paso   Inicio / Fin", 28, ly + 65)
-    texto("+ / −: velocidad   Esc: salir   B: bodega", 28, ly + 91)
+    texto("Espacio: pausa   Flechas: paso   Inicio / Fin", 28, ly + 65)
+    texto("+ / -: velocidad   Esc: salir   B: bodega", 28, ly + 91)
     texto("Mensajes del tick", panel_x, my, True)
     for i, linea in enumerate(lineas):
         texto(linea, panel_x, my + 42 + i * 23)
