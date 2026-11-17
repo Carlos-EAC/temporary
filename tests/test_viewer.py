@@ -187,6 +187,13 @@ def test_cli_sin_plots_no_lanza_subproceso(cli_preparada, monkeypatch, tmp_path)
     assert (tmp_path / config.nombre / "trace.json").exists()
 
 
+def test_cli_silenciosa_genera_graficas_sin_imprimir_rutas(cli_preparada, tmp_path, capfd):
+    cli, config, _ = cli_preparada
+    assert cli.main(["config.json", "--salida", str(tmp_path), "--silencioso"]) == 0
+    assert len(list((tmp_path / config.nombre / "plots").glob("*.png"))) == 6
+    assert capfd.readouterr().out == ""
+
+
 @pytest.mark.parametrize("etapa,excepcion", [
     ("cargar_config", ValueError("configuración inválida")),
     ("ejecutar", RuntimeError("se alcanzó max_ticks")),

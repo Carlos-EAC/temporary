@@ -38,7 +38,8 @@ def main(argv: list[str] | None = None) -> int:
         logging.info("Trace guardado: %s", ruta_trace)
         if not args.sin_plots:
             plots = Path(__file__).resolve().parents[2] / "viz" / "plots.py"
-            subprocess.run([sys.executable, str(plots), str(ruta_trace)], check=True)
+            subprocess.run([sys.executable, str(plots), str(ruta_trace)], check=True,
+                           stdout=subprocess.DEVNULL if args.silencioso else None)
         return 0
     except Exception as exc:
         # Frontera del ejecutable: cualquier fallo debe producir código no cero.
