@@ -6,26 +6,22 @@ que la tabla trae los valores correctos; cómo se ven se revisa a ojo.
 
 import copy
 import csv
-import importlib.util
 from pathlib import Path
 
 import pytest
 
 pytest.importorskip("matplotlib")
 
-from harvest_sim.telemetria import TraceBuilder, cargar_trace, escribir_trace  # noqa: E402
+from ayuda_datos import FIXTURE, cargar_script, trace_a_mano  # noqa: E402
+from harvest_sim.datos import TraceBuilder, cargar_trace, escribir_trace  # noqa: E402
+from harvest_sim.datos.experimentos import resumen_por_grupo  # noqa: E402
 
-RAIZ = Path(__file__).resolve().parents[1]
-FIXTURE = RAIZ / "tests" / "fixtures" / "trace_ejemplo.json"
 PNG = b"\x89PNG\r\n\x1a\n"
 
 
 @pytest.fixture(scope="module")
 def plots():
-    spec = importlib.util.spec_from_file_location("plots", RAIZ / "viz" / "plots.py")
-    modulo = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(modulo)
-    return modulo
+    return cargar_script("viz/plots.py")
 
 
 def es_png(ruta):
@@ -39,13 +35,27 @@ def con_nombre(trace, nombre):
     return otro
 
 
-def test_las_cinco_graficas_de_un_trace_se_generan(plots, tmp_path):
+def test_las_seis_graficas_de_un_trace_se_generan(plots, tmp_path):
     rutas = plots.graficas_de_un_trace(FIXTURE, tmp_path)
     assert [r.name for r in rutas] == [
-        "1_carga_cosechadora.png", "2_linea_de_tiempo_estados.png", "3_ocioso_acumulado.png",
-        "4_distancia_cosechadora_carro.png", "5_grano_en_bodega.png",
+        "1_linea_de_tiempo_estados.png", "2_ocioso_acumulado.png", "3_distancia_cosechadora_carro.png",
+        "4_flujo_del_grano.png", "5_mapa_espera.png", "6_mapa_trafico.png",
     ]
     assert all(es_png(r) for r in rutas)
+
+
+def test_graficas_con_varios_agentes_y_opcion_agente(plots, tmp_path):
+    """Un trace con 2 cosechadoras y 1 carro genera las 6 gráficas (promedio) y las de una cosechadora."""
+    agentes = [("h1", "cosechadora"), ("h2", "cosechadora"), ("c1", "carro")]
+    ticks = [{"h1": (1, 1, "COSECHANDO", 0), "h2": (4, 1, "COSECHANDO", 0), "c1": (0, 0, "EN_BASE", 0)},
+             {"h1": (1, 1, "LLENA_ESPERANDO", 4), "h2": (4, 2, "COSECHANDO", 1), "c1": (1, 0, "YENDO_A_COSECHADORA", 0)},
+             {"h1": (1, 1, "LLENA_ESPERANDO", 4), "h2": (4, 2, "LLENA_ESPERANDO", 2), "c1": (2, 0, "YENDO_A_COSECHADORA", 0)}]
+    ruta = tmp_path / "varios" / "trace.json"
+    escribir_trace(trace_a_mano(agentes, ticks, nombre="varios"), ruta)
+    assert all(es_png(r) for r in plots.graficas_de_un_trace(ruta, tmp_path / "prom"))
+    assert all(es_png(r) for r in plots.graficas_de_un_trace(ruta, tmp_path / "h2", agente="h2"))
+    with pytest.raises(ValueError, match="no es una cosechadora"):
+        plots.graficas_de_un_trace(ruta, tmp_path / "x", agente="c1")
 
 
 def test_comparacion_y_tabla_resumen(plots, tmp_path):
@@ -59,22 +69,25 @@ def test_comparacion_y_tabla_resumen(plots, tmp_path):
     with open(ruta_csv, encoding="utf-8", newline="") as f:
         filas = list(csv.DictReader(f))
     assert [f["escenario"] for f in filas] == ["escenario_a", "escenario_b"]
-    # el CSV lleva TODAS las métricas; valores calculados a mano sobre el fixture
+    # el CSV lleva TODAS las métricas, incluido el detalle por agente; valores calculados a mano
     a = filas[0]
+    assert (a["agentes.cosechadoras"], a["agentes.carros"]) == ("1", "1")
     assert (a["tiempo_ocioso_cosechadora"], a["tick_fin_cosecha"], a["tiempo_completacion"]) == ("23", "44", "49")
-    assert (a["distancia_total"], a["num_ciclos"], a["espera_por_ciclo"]) == ("32", "3", "5;8;10")
+    assert (a["distancia_total"], a["num_ciclos"], a["espera_promedio_por_ciclo"]) == ("32", "3", "7.6667")
     assert (a["utilizacion_carro"], a["grano_total_entregado"], a["colisiones"]) == ("0.8", "8", "0")
     assert (a["porcentaje_ocioso"], a["porcentaje_entregado"], a["grano_esperado_total"]) == ("46.0", "100.0", "8")
-    assert (a["ticks_por_estado.cosechadora_1.LLENA_ESPERANDO"], a["ticks_por_estado.carro_1.EN_BASE"]) == ("23", "10")
+    assert a["por_agente.cosechadora_1.espera_por_ciclo"] == "5;8;10"
+    assert (a["por_agente.cosechadora_1.ticks_por_estado.LLENA_ESPERANDO"],
+            a["por_agente.carro_1.ticks_por_estado.EN_BASE"]) == ("23", "10")
     assert (a["mensajes_enviados.LLENA"], a["mensajes_enviados.TRANSFERENCIA_TERMINADA"]) == ("3", "3")
-    assert (a["ticks_bloqueados.cosechadora_1"], a["ticks_bloqueados.carro_1"]) == ("2", "0")
-    assert filas[1]["ticks_bloqueados.carro_1"] == "1"  # el bloqueo agregado a B
+    assert (a["ticks_bloqueados"], filas[1]["ticks_bloqueados"]) == ("2", "3")
+    assert filas[1]["por_agente.carro_1.ticks_bloqueados"] == "1"  # el bloqueo agregado a B
 
     lineas = Path(ruta_md).read_text(encoding="utf-8").splitlines()
     assert len(lineas) == 2 + 2  # encabezado, separador y una fila por escenario
-    assert lineas[0].startswith("| Escenario | Tiempo de completación | Fin de la cosecha |")
-    assert lineas[2] == "| escenario_a | 49 | 44 | 23 | 46 | 32 | 1.9 | 0.8 | 0 | 2 | 3 | 8 | 100 |"
-    assert " | 3 | 3 | 8 | 100 |" in lineas[3]  # B: 3 bloqueos en total (suma de ambos agentes)
+    assert lineas[0].startswith("| Escenario | Agentes (cosechadoras + carros) | Tiempo de completación |")
+    assert lineas[2] == "| escenario_a | 1 + 1 | 49 | 23 | 46 | 7.6667 | 32 | 1.9 | 0.8 | 2 | 0 | 3 | 100 |"
+    assert " | 0.8 | 3 | 0 | 3 | 100 |" in lineas[3]  # B: 3 bloqueos en total
 
 
 def test_todos_los_estados_tienen_categoria_y_color_validado(plots):
@@ -112,7 +125,15 @@ def test_sin_esperas_las_graficas_no_fallan(plots, tmp_path):
     trace = b.construir()
     assert es_png(plots.grafica_ocioso_acumulado(trace, tmp_path / "ocioso.png"))
     assert es_png(plots.grafica_distancia(trace, tmp_path / "distancia.png"))
-    assert es_png(plots.grafica_grano(trace, tmp_path / "grano.png"))
+    assert es_png(plots.grafica_flujo_grano(trace, tmp_path / "grano.png"))
+
+
+def test_grafica_de_sensibilidad(plots, tmp_path):
+    filas = [{"escenario": e, "capacidad_carro": c, "tiempo_ocioso_cosechadora": v}
+             for e, c, v in [("a", 10, 30), ("a", 20, 20), ("b", 10, 25), ("b", 20, 22), ("b", 20, 24)]]
+    resumen = resumen_por_grupo(filas, ["capacidad_carro"], ["tiempo_ocioso_cosechadora"])
+    assert es_png(plots.grafica_sensibilidad(resumen, "capacidad_carro", "tiempo_ocioso_cosechadora",
+                                             tmp_path / "sens.png"))
 
 
 def test_main_genera_graficas_comparacion_y_tabla(plots, tmp_path, capsys):
@@ -125,7 +146,11 @@ def test_main_genera_graficas_comparacion_y_tabla(plots, tmp_path, capsys):
     assert plots.main(rutas + ["--salida", str(tmp_path / "salida")]) == 0
     salida = tmp_path / "salida"
     for nombre in ("escenario_a", "escenario_b"):
-        assert es_png(salida / nombre / "2_linea_de_tiempo_estados.png")
-    assert es_png(salida / "comparacion" / "6_comparacion_escenarios.png")
+        assert es_png(salida / nombre / "1_linea_de_tiempo_estados.png")
+        assert es_png(salida / nombre / "5_mapa_espera.png")
+    assert es_png(salida / "comparacion" / "comparacion_escenarios.png")
     assert (salida / "comparacion" / "resumen.csv").exists() and (salida / "comparacion" / "resumen.md").exists()
     assert str(salida / "comparacion" / "resumen.md") in capsys.readouterr().out
+    # --agente con un id que no es cosechadora: error claro y código 2
+    assert plots.main(rutas[:1] + ["--salida", str(tmp_path / "otra"), "--agente", "carro_1"]) == 2
+    assert "no es una cosechadora" in capsys.readouterr().err

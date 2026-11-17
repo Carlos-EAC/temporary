@@ -1,22 +1,16 @@
 """Generador de datos de ejemplo: escenarios A, B y C (tarea 7 de Datos).  [Dueño: Joel]"""
 
-import importlib.util
 import itertools
-from pathlib import Path
 
 import pytest
 
-from harvest_sim.telemetria import calcular_metricas, cargar_trace, validar_trace
-
-RAIZ = Path(__file__).resolve().parents[1]
+from ayuda_datos import cargar_script
+from harvest_sim.datos import calcular_metricas, cargar_trace, validar_trace
 
 
 @pytest.fixture(scope="module")
 def gen():
-    spec = importlib.util.spec_from_file_location("generar_trace_ejemplo", RAIZ / "tools" / "generar_trace_ejemplo.py")
-    modulo = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(modulo)
-    return modulo
+    return cargar_script("tools/generar_trace_ejemplo.py")
 
 
 def test_los_tres_escenarios_son_validos_y_distintos(gen, tmp_path):
@@ -56,3 +50,10 @@ def test_el_generador_es_robusto_con_otras_configuraciones(gen):
         cfg = dict(gen.CONFIG, ancho=ancho, alto=alto, capacidad_cosechadora=cap, capacidad_carro=cap * mult,
                    tasa_transferencia=tasa, tasa_descarga=tasa)
         assert validar_trace(gen.generar(cfg)) == [], cfg
+
+
+def test_el_generador_rechaza_obstaculos(gen):
+    """El generador de ejemplo no recorre obstáculos: si la configuración trae alguno, falla con claridad."""
+    assert validar_trace(gen.generar(dict(gen.CONFIG, obstaculos={"celdas": [], "regiones": []}))) == []
+    with pytest.raises(ValueError, match="no soporta obstáculos"):
+        gen.generar(dict(gen.CONFIG, obstaculos={"celdas": [[1, 1]], "regiones": []}))

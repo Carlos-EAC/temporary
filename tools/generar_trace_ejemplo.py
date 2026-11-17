@@ -2,8 +2,10 @@
 """Genera tests/fixtures/trace_ejemplo.json (tarea 2 de Datos).
 
 NO es la simulación del equipo: es un generador DETERMINISTA (sin aleatoriedad) de datos de ejemplo
-que aplica las reglas del §5 de la especificación de forma simplificada, para que el visor y las
-métricas se desarrollen sin esperar la simulación real. Arma el archivo con el propio TraceBuilder.
+que aplica las reglas del §5 de la especificación de forma simplificada (1 cosechadora, 1 carro, sin
+obstáculos), para que el visor, las métricas y los experimentos se desarrollen sin esperar la simulación
+real. Arma el archivo con el propio TraceBuilder. Se queda hasta que exista `simulacion.ejecutar`;
+entonces el fixture se generará con una corrida corta de la simulación real.
 
 Convención: el tick 0 es el estado inicial (antes de cualquier paso); los pasos empiezan en el tick 1.
 
@@ -22,9 +24,10 @@ from collections import deque
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(RAIZ / "src"))
+sys.path.insert(0, str(RAIZ / "src"))  # permite correrlo sin instalar el paquete (pip install -e .)
 
-from harvest_sim.telemetria import (  # noqa: E402
+from harvest_sim.datos import (  # noqa: E402
+    PERFORMATIVAS,
     TraceBuilder,
     calcular_metricas,
     cargar_trace,
@@ -136,7 +139,8 @@ def simular(cfg, forzar_bloqueo=True):
             pendientes.remove(m)
 
         def enviar(tipo_mensaje, de, a, payload):
-            m = {"id": S["id"], "tipo_mensaje": tipo_mensaje, "de": de, "a": a, "payload": payload, "entrega_en": t + 1}
+            m = {"id": S["id"], "tipo_mensaje": tipo_mensaje, "performativa": PERFORMATIVAS[tipo_mensaje],
+                 "de": de, "a": a, "payload": payload, "entrega_en": t + 1}
             S["id"] += 1
             pendientes.append(m)
             eventos.append({"tipo": "MENSAJE_ENVIADO", **m})
@@ -284,11 +288,14 @@ def validar(salida, contabilidad, total_campo, cfg):
 def generar(cfg=None):
     """Devuelve el trace de ejemplo (dict) para el config dado."""
     cfg = CONFIG if cfg is None else cfg
+    obs = cfg.get("obstaculos") or {}
+    if obs.get("celdas") or obs.get("regiones"):
+        raise ValueError("el generador de ejemplo no soporta obstáculos")
     salida, contabilidad, total_campo = simular(cfg)
     validar(salida, contabilidad, total_campo, cfg)
     mundo = {
         "ancho": cfg["ancho"], "alto": cfg["alto"], "bodega": [0, 0],
-        "bases": {C: [1, 0], H: [2, 0]}, "grano_por_celda": cfg["grano_por_celda"],
+        "bases": {C: [1, 0], H: [2, 0]}, "grano_por_celda": cfg["grano_por_celda"], "obstaculos": [],
     }
     agentes = [
         {"id": H, "tipo": "cosechadora", "capacidad": cfg["capacidad_cosechadora"], "base": [2, 0]},
@@ -331,7 +338,7 @@ def generar_escenarios(salida=SALIDA_ESCENARIOS):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Genera datos de ejemplo del trace 2.0 (no es la simulación real).")
+    parser = argparse.ArgumentParser(description="Genera datos de ejemplo del trace 2.1 (no es la simulación real).")
     parser.add_argument("--escenarios", action="store_true",
                         help="genera los tres escenarios de ejemplo en lugar del fixture de las pruebas")
     parser.add_argument("--salida", default=str(SALIDA_ESCENARIOS),
