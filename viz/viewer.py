@@ -179,6 +179,10 @@ def guardar_cuadros(rep, carpeta, cada=10):
         ruta = carpeta / f"tick_{tick:06d}.png"
         pygame.image.save(dibujar(rep), ruta)
         rutas.append(ruta)
+    # Una reexportación debe mostrar solo los cuadros de la corrida actual.
+    for anterior in carpeta.glob("tick_*.png"):
+        if anterior.stem[5:].isdigit() and anterior not in rutas:
+            anterior.unlink()
     return rutas
 
 

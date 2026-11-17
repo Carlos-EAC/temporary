@@ -103,6 +103,20 @@ def test_obstaculos_tienen_color_distinto(viewer):
     assert normal.get_at(pos) != obstaculo.get_at(pos)
 
 
+def test_reexportar_no_mezcla_cuadros_de_corridas_anteriores(viewer, tmp_path):
+    rep = viewer.Reproductor(trace_de_prueba())
+    viewer.guardar_cuadros(rep, tmp_path, 7)
+    nota = tmp_path / "tick_notas.png"
+    nota.write_bytes(b"archivo ajeno a la exportacion")
+    trace_corto = trace_de_prueba()
+    trace_corto["meta"]["total_ticks"] = 5
+    trace_corto["ticks"] = trace_corto["ticks"][:-1]
+    viewer.guardar_cuadros(viewer.Reproductor(trace_corto), tmp_path, 3)
+    assert sorted(p.name for p in tmp_path.glob("tick_*.png") if p != nota) == [
+        "tick_000000.png", "tick_000003.png", "tick_000005.png"]
+    assert nota.read_bytes() == b"archivo ajeno a la exportacion"
+
+
 def test_errores_de_entrada(viewer, tmp_path, capsys):
     assert viewer.main([str(tmp_path / "ausente.json")]) == 2
     assert "error:" in capsys.readouterr().err
