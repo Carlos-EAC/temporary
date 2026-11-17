@@ -11,7 +11,6 @@ Uso:
     python tools/generar_trace_ejemplo.py                  # reescribe el fixture de las pruebas
     python tools/generar_trace_ejemplo.py --escenarios     # tres escenarios de ejemplo en runs/ejemplo/
     python tools/generar_trace_ejemplo.py --escenarios --salida otra/carpeta
-    python tools/generar_trace_ejemplo.py --escenarios --sin-bloqueo  # otra corrida, para comparar
 """
 
 from __future__ import annotations
@@ -282,11 +281,10 @@ def validar(salida, contabilidad, total_campo, cfg):
     assert contabilidad[-1][2] == total_campo
 
 
-def generar(cfg=None, forzar_bloqueo=True):
-    """Devuelve el trace de ejemplo (dict) para el config dado. Con forzar_bloqueo=False no se construye
-    el bloqueo del primer viaje: es otra corrida del mismo escenario (sirve para probar la comparación)."""
+def generar(cfg=None):
+    """Devuelve el trace de ejemplo (dict) para el config dado."""
     cfg = CONFIG if cfg is None else cfg
-    salida, contabilidad, total_campo = simular(cfg, forzar_bloqueo)
+    salida, contabilidad, total_campo = simular(cfg)
     validar(salida, contabilidad, total_campo, cfg)
     mundo = {
         "ancho": cfg["ancho"], "alto": cfg["alto"], "bodega": [0, 0],
@@ -317,12 +315,12 @@ def escenarios_de_ejemplo():
     }
 
 
-def generar_escenarios(salida=SALIDA_ESCENARIOS, forzar_bloqueo=True):
+def generar_escenarios(salida=SALIDA_ESCENARIOS):
     """Escribe <salida>/<nombre>/trace.json para cada escenario de ejemplo y devuelve las rutas.
     Cada trace se valida antes de escribirse."""
     rutas = []
     for nombre, cfg in escenarios_de_ejemplo().items():
-        trace = generar(cfg, forzar_bloqueo)
+        trace = generar(cfg)
         errores = validar_trace(trace)
         if errores:
             raise ValueError(f"el escenario {nombre} no es válido: {errores[:3]}")
@@ -336,16 +334,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Genera datos de ejemplo del trace 2.0 (no es la simulación real).")
     parser.add_argument("--escenarios", action="store_true",
                         help="genera los tres escenarios de ejemplo en lugar del fixture de las pruebas")
-    parser.add_argument("--sin-bloqueo", action="store_true",
-                        help="con --escenarios: otra corrida de los mismos escenarios, sin el bloqueo construido "
-                             "(para probar la comparación contra la línea base)")
-    parser.add_argument("--salida", default=None,
-                        help="carpeta para --escenarios (default: runs/ejemplo, o runs/ejemplo_sin_bloqueo)")
+    parser.add_argument("--salida", default=str(SALIDA_ESCENARIOS),
+                        help="carpeta para --escenarios (default: runs/ejemplo)")
     args = parser.parse_args(argv)
 
     if args.escenarios:
-        salida = args.salida or (RAIZ / "runs" / "ejemplo_sin_bloqueo" if args.sin_bloqueo else SALIDA_ESCENARIOS)
-        for ruta in generar_escenarios(salida, forzar_bloqueo=not args.sin_bloqueo):
+        for ruta in generar_escenarios(args.salida):
             m = calcular_metricas(cargar_trace(ruta))
             print(f"escrito: {ruta}  (ocioso {m['tiempo_ocioso_cosechadora']} ticks, "
                   f"completación {m['tiempo_completacion']} ticks)")

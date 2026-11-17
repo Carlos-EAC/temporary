@@ -246,7 +246,7 @@ def series_temporales(trace: dict) -> dict[str, list]:
     return serie
 
 
-def calcular_metricas(trace: dict, parametros: dict | None = None) -> dict:
+def calcular_metricas(trace: dict) -> dict:
     """Calcula las métricas A PARTIR DEL LOG (usa `reconstruir`; no modifica el trace).
 
     Definiciones (registradas en docs/decisiones.md):
@@ -269,9 +269,6 @@ def calcular_metricas(trace: dict, parametros: dict | None = None) -> dict:
     - distancia_cosechadora_carro_promedio / _minima / _maxima: sobre la distancia Manhattan de cada tick.
     - grano_cosechado_total, grano_esperado_total (ancho x (alto - 1) x grano_por_celda) y
       porcentaje_entregado (entregado / esperado, en %, 2 decimales; None si no se conoce el total esperado).
-    Combustible y gasto (ver `metricas_economicas`; `parametros` cambia los valores por defecto):
-    - combustible_usado / _comprado (por agente y total), recargas, combustible_minimo_en_tanque,
-      combustible_suficiente, costo_combustible, valor_grano_entregado y balance.
     """
     cosechadoras = [a["id"] for a in trace["agentes"] if a["tipo"] == "cosechadora"]
     carros = [a["id"] for a in trace["agentes"] if a["tipo"] == "carro"]
@@ -360,7 +357,6 @@ def calcular_metricas(trace: dict, parametros: dict | None = None) -> dict:
         "grano_esperado_total": esperado,
         "porcentaje_entregado": round(100 * entregado / esperado, 2) if esperado else None,
     }
-    metricas.update(metricas_economicas(trace, parametros))
     return metricas
 
 
@@ -392,7 +388,7 @@ def _tiene_tipo(valor, tipo) -> bool:
 
 
 def validar_trace(trace) -> list[str]:
-    """Revisa que un trace cumpla el formato 2.0 y las reglas físicas que se pueden ver en el log.
+    """Revisa que un trace cumpla el formato 2.0 (el contrato del log) y que sus datos sean consistentes.
 
     Devuelve la lista de errores (vacía si el trace es válido); no se detiene en el primero. Cada mensaje
     dice dónde está el problema, por ejemplo: "tick 14, evento 2 (DEPOSITO): entregado_total 7, se esperaba 6".
@@ -402,9 +398,11 @@ def validar_trace(trace) -> list[str]:
     conocido, campos obligatorios y sin campos extra, tipos de dato, orden por categoría); agentes (solo
     pose, estado y carga; en el catálogo; completos en el tick 0; orientación válida; carga entre 0 y la
     capacidad; dentro del mapa); mundo (celdas dentro del campo y cosechadas una sola vez, entregado_total
-    acumulado); mensajes (ids crecientes, entrega en el tick siguiente al envío y una sola vez); y las reglas
-    físicas R2 (un paso por tick), R3 (dos agentes nunca en la misma celda), R4 (no intercambian posiciones)
-    y R7 (grano cosechado = cargas + entregado) en cada tick.
+    acumulado); y mensajes (ids crecientes, entrega en el tick siguiente al envío y una sola vez).
+
+    No revisa las reglas físicas de la simulación (un paso por tick, celdas compartidas, intercambios,
+    conservación del grano): esas las prueban las pruebas de integración (Ilan, con `reconstruir`) y las del
+    mundo y las rutas (Carlos y Oswaldo).
     """
     errores: list[str] = []
     error = errores.append
@@ -440,7 +438,6 @@ def validar_trace(trace) -> list[str]:
 
     mundo = trace.get("mundo")
     ancho = alto = None
-    grano = 1
     if not isinstance(mundo, dict):
         error("mundo debe ser un objeto")
         mundo = {}
@@ -461,11 +458,8 @@ def validar_trace(trace) -> list[str]:
         if "bases" in mundo and not (isinstance(mundo["bases"], dict)
                                      and all(_es_celda(v) for v in mundo["bases"].values())):
             error("mundo: bases debe ser un objeto {agent_id: [x, y]}")
-        if "grano_por_celda" in mundo:
-            if _es_entero(mundo["grano_por_celda"]) and mundo["grano_por_celda"] >= 1:
-                grano = mundo["grano_por_celda"]
-            else:
-                error(f"mundo: grano_por_celda debe ser un entero >= 1, es {mundo['grano_por_celda']!r}")
+        if "grano_por_celda" in mundo and not (_es_entero(mundo["grano_por_celda"]) and mundo["grano_por_celda"] >= 1):
+            error(f"mundo: grano_por_celda debe ser un entero >= 1, es {mundo['grano_por_celda']!r}")
 
     def dentro_del_mapa(x, y):
         return ancho is None or alto is None or (0 <= x < ancho and 0 <= y < alto)
@@ -538,7 +532,6 @@ def validar_trace(trace) -> list[str]:
     enviados: dict[int, tuple] = {}
     entregados: set[int] = set()
     ultimo_id = 0
-    posiciones_previas = None
 
     def agente_conocido(pref, nombre, campo="agente"):
         if nombre not in catalogo:
@@ -665,72 +658,13 @@ def validar_trace(trace) -> list[str]:
                 if ausentes:
                     error(f"tick 0: al agente {a!r} le faltan {ausentes} (el tick 0 es el estado inicial completo)")
 
-        # Reglas físicas: solo si todos los agentes tienen estado completo
-        if not catalogo or any(any(c not in s for c in _CAMPOS_AGENTE) for s in estado.values()):
-            continue
-        posiciones = {a: s["pose"] for a, s in estado.items()}
-        nombres = list(posiciones)
-        for i, a in enumerate(nombres):
-            for b in nombres[i + 1:]:
-                if posiciones[a] == posiciones[b]:
-                    error(f"tick {tick}: R3, {a} y {b} ocupan la misma celda {posiciones[a]}")
-                elif (posiciones_previas and posiciones_previas[a] == posiciones[b]
-                      and posiciones_previas[b] == posiciones[a]):
-                    error(f"tick {tick}: R4, {a} y {b} intercambian posiciones")
-        if posiciones_previas:
-            for a in nombres:
-                if _manhattan(posiciones_previas[a], posiciones[a]) > 1:
-                    error(f"tick {tick}: R2, {a} se mueve de {posiciones_previas[a]} a {posiciones[a]} "
-                          "(más de una celda)")
-        cosechado = len(celdas) * grano
-        en_agentes = sum(s["carga"] for s in estado.values())
-        if cosechado != en_agentes + entregado:
-            error(f"tick {tick}: R7, grano cosechado {cosechado} distinto de cargas {en_agentes} "
-                  f"+ entregado {entregado}")
-        posiciones_previas = posiciones
-
     for ident, (enviado_en, _, entrega_en) in sorted(enviados.items()):
         if ident not in entregados and entrega_en <= total:
             error(f"el mensaje {ident} (enviado en el tick {enviado_en}) nunca se entregó")
     return errores
 
 
-# --- Comparación contra la línea base -----------------------------------------------------------
-# Sentido de cada métrica: "mejor" es lo que aprovecha mejor los recursos disponibles, sobre todo el
-# tiempo. "menor": menos es mejor; "mayor": más es mejor; "neutro": informativa, no depende de la
-# coordinación (por ejemplo, el número de ciclos lo fija la capacidad).
-SENTIDO_METRICAS = {
-    "tiempo_ocioso_cosechadora": "menor",
-    "tiempo_transfiriendo": "menor",
-    "tick_fin_cosecha": "menor",
-    "tiempo_completacion": "menor",
-    "distancia_cosechadora": "menor",
-    "distancia_carro": "menor",
-    "distancia_total": "menor",
-    "colisiones": "menor",
-    "num_ciclos": "neutro",
-    "utilizacion_carro": "mayor",
-    "grano_total_entregado": "mayor",
-    "porcentaje_ocioso": "menor",
-    "distancia_cosechadora_carro_promedio": "menor",
-    "distancia_cosechadora_carro_minima": "neutro",
-    "distancia_cosechadora_carro_maxima": "menor",
-    "grano_cosechado_total": "mayor",
-    "grano_esperado_total": "neutro",
-    "porcentaje_entregado": "mayor",
-    "combustible_usado_total": "menor",
-    "combustible_comprado_total": "menor",
-    "costo_combustible": "menor",
-    "valor_grano_entregado": "mayor",
-    "balance": "mayor",
-}
-# Estados que son tiempo de espera o recurso sin usar: menos ticks en ellos es mejor.
-ESTADOS_DE_ESPERA = ("LLENA_ESPERANDO", "ESPERANDO_TRANSFERENCIA", "EN_BASE")
-# Métricas anidadas que son conteos: si una clave falta en una corrida, vale 0.
-_PREFIJOS_CONTEO = ("ticks_por_estado.", "ticks_bloqueados.", "mensajes_enviados.")
-RESULTADOS = ("mejora", "empeora", "igual", "distinto", "sin datos")
-
-
+# --- Utilidades para tablas ---------------------------------------------------------------------
 def aplanar_metricas(metricas: dict, prefijo: str = "") -> dict:
     """{'a': {'b': 1}, 'l': [1, 2]} -> {'a.b': 1, 'l': '1;2'}: una columna por valor, para tablas y comparaciones."""
     plano = {}
@@ -743,198 +677,3 @@ def aplanar_metricas(metricas: dict, prefijo: str = "") -> dict:
         else:
             plano[nombre] = valor
     return plano
-
-
-def sentido_de_metrica(clave: str) -> str:
-    """'menor', 'mayor' o 'neutro' para una métrica (aplanada con '.')."""
-    if clave.startswith("ticks_por_estado."):
-        return "menor" if clave.rsplit(".", 1)[-1] in ESTADOS_DE_ESPERA else "neutro"
-    if clave.startswith("ticks_bloqueados."):
-        return "menor"
-    if clave.startswith(("combustible_usado.", "combustible_comprado.")):
-        return "menor"
-    if clave.startswith(("mensajes_enviados.", "recargas.", "combustible_minimo_en_tanque.")):
-        return "neutro"
-    return SENTIDO_METRICAS.get(clave, "neutro")
-
-
-def _es_numero(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
-
-
-def comparar_metricas(base: dict, nueva: dict) -> dict[str, dict]:
-    """Compara dos diccionarios de métricas (los de `calcular_metricas`), métrica por métrica.
-
-    Devuelve {metrica_aplanada: {base, nueva, diferencia, cambio_pct, sentido, resultado}}, donde
-    diferencia = nueva - base, cambio_pct = diferencia / base en % (None si la base es 0 y hubo cambio) y
-    resultado es 'mejora', 'empeora', 'igual', 'distinto' (métrica informativa que cambió) o 'sin datos'.
-    Las métricas que no son números (por ejemplo, la lista espera_por_ciclo) no se comparan.
-    """
-    pb, pn = aplanar_metricas(base), aplanar_metricas(nueva)
-    claves = list(pb) + [c for c in pn if c not in pb]
-    filas = {}
-    for clave in claves:
-        b, n = pb.get(clave), pn.get(clave)
-        if clave.startswith(_PREFIJOS_CONTEO):
-            b, n = (0 if b is None else b), (0 if n is None else n)
-        if not (b is None or _es_numero(b)) or not (n is None or _es_numero(n)) or (b is None and n is None):
-            continue
-        sentido = sentido_de_metrica(clave)
-        if b is None or n is None:
-            diferencia = cambio = None
-            resultado = "sin datos"
-        else:
-            diferencia = n - b
-            if isinstance(diferencia, float):
-                diferencia = round(diferencia, 4)
-            cambio = round(100 * diferencia / b, 2) if b != 0 else (0.0 if diferencia == 0 else None)
-            if diferencia == 0:
-                resultado = "igual"
-            elif sentido == "neutro":
-                resultado = "distinto"
-            elif (diferencia < 0) == (sentido == "menor"):
-                resultado = "mejora"
-            else:
-                resultado = "empeora"
-        filas[clave] = {"base": b, "nueva": n, "diferencia": diferencia, "cambio_pct": cambio,
-                        "sentido": sentido, "resultado": resultado}
-    return filas
-
-
-def comparar_corridas(trace_base: dict, trace_nuevo: dict, parametros: dict | None = None) -> dict:
-    """Compara una corrida nueva contra la línea base del MISMO escenario.
-
-    Exige el mismo mapa (`mundo`), los mismos agentes y la misma seed; si no, lanza ValueError, porque la
-    comparación solo vale en los mismos mapas y seeds. Otras diferencias de config (por ejemplo, un
-    parámetro de la estrategia nueva) se permiten y se informan en `diferencias_config`.
-    """
-    difieren = [c for c in ("mundo", "agentes") if trace_base.get(c) != trace_nuevo.get(c)]
-    if trace_base["meta"].get("seed") != trace_nuevo["meta"].get("seed"):
-        difieren.append("seed")
-    if difieren:
-        raise ValueError(f"las corridas no son del mismo escenario: difieren en {difieren}")
-    cfg_b, cfg_n = trace_base.get("config", {}), trace_nuevo.get("config", {})
-    diferencias_config = sorted(k for k in set(cfg_b) | set(cfg_n) if k != "nombre" and cfg_b.get(k) != cfg_n.get(k))
-    filas = comparar_metricas(calcular_metricas(trace_base, parametros), calcular_metricas(trace_nuevo, parametros))
-    return {
-        "escenario": trace_base["meta"].get("escenario"),
-        "diferencias_config": diferencias_config,
-        "metricas": filas,
-        "resumen": {r: sum(1 for f in filas.values() if f["resultado"] == r) for r in RESULTADOS},
-    }
-
-
-# --- Combustible y gasto --------------------------------------------------------------------------
-# Se calcula desde el log (no cambia el formato del trace): cada agente tiene un tanque que empieza lleno,
-# gasta por cada celda recorrida y, con el motor encendido, por cada tick quieto; en la base (estados
-# EN_BASE o FIN) el motor está apagado y el tanque se recarga por completo. El combustible que se cobra es
-# el tanque inicial completo más cada recarga: como en una gasolinera, se paga lo que se carga, no solo lo
-# que se usa. Los valores son de ejemplo (placeholders) hasta tener datos reales; el tanque es lo bastante
-# grande para una corrida completa, y `combustible_suficiente` avisa si no lo fue.
-PARAMETROS_POR_DEFECTO = {
-    "capacidad_tanque": {"cosechadora": 300.0, "carro": 100.0},       # litros
-    "consumo_por_celda": {"cosechadora": 2.0, "carro": 1.0},          # litros por celda recorrida
-    "consumo_por_tick_encendido": {"cosechadora": 0.5, "carro": 0.25},  # litros por tick quieto, motor encendido
-    "precio_por_litro": 1.0,                                          # $ por litro
-    "valor_por_unidad_de_grano": 10.0,                                # $ por unidad entregada en la bodega
-}
-ESTADOS_MOTOR_APAGADO = ("EN_BASE", "FIN")
-
-
-def parametros_economicos(cambios: dict | None = None) -> dict:
-    """Los parámetros por defecto con `cambios` aplicados (los diccionarios por tipo se combinan)."""
-    p = copy.deepcopy(PARAMETROS_POR_DEFECTO)
-    for clave, valor in (cambios or {}).items():
-        if clave not in p:
-            raise ValueError(f"parámetro desconocido: {clave!r}")
-        if isinstance(p[clave], dict):
-            if not isinstance(valor, dict):
-                raise ValueError(f"{clave} debe ser un objeto por tipo de agente, por ejemplo {p[clave]}")
-            p[clave].update(valor)
-        else:
-            p[clave] = valor
-    return p
-
-
-def cargar_parametros(ruta: str | Path) -> dict:
-    """Lee un JSON con los parámetros que cambian (los demás quedan por defecto)."""
-    with open(ruta, encoding="utf-8") as f:
-        return parametros_economicos(json.load(f))
-
-
-def _simular_combustible(trace: dict, parametros: dict | None):
-    p = parametros_economicos(parametros)
-    tipos = {a["id"]: a["tipo"] for a in trace["agentes"]}
-    for clave in ("capacidad_tanque", "consumo_por_celda", "consumo_por_tick_encendido"):
-        faltan = sorted({tp for tp in tipos.values() if tp not in p[clave]})
-        if faltan:
-            raise ValueError(f"no hay {clave} para el tipo de agente {faltan}")
-    capacidad = {a: float(p["capacidad_tanque"][tp]) for a, tp in tipos.items()}
-    nivel = dict(capacidad)
-    usado = {a: 0.0 for a in tipos}
-    comprado = dict(capacidad)  # el llenado inicial del tanque también se paga
-    recargas = {a: 0 for a in tipos}
-    minimo = dict(capacidad)
-    serie = {"tick": []}
-    serie.update({a: {"nivel": [], "usado_acumulado": [], "comprado_acumulado": []} for a in tipos})
-    anterior = None
-    for e in reconstruir(trace):
-        for a, tp in tipos.items():
-            if anterior is not None:
-                estado = e["agentes"][a]["estado"]
-                if _celda(anterior, a) != _celda(e, a):
-                    gasto = p["consumo_por_celda"][tp]
-                elif estado not in ESTADOS_MOTOR_APAGADO:
-                    gasto = p["consumo_por_tick_encendido"][tp]
-                else:
-                    gasto = 0.0
-                nivel[a] -= gasto
-                usado[a] += gasto
-                minimo[a] = min(minimo[a], nivel[a])
-                if estado in ESTADOS_MOTOR_APAGADO and nivel[a] < capacidad[a]:
-                    comprado[a] += capacidad[a] - nivel[a]
-                    nivel[a] = capacidad[a]
-                    recargas[a] += 1
-            serie[a]["nivel"].append(round(nivel[a], 4))
-            serie[a]["usado_acumulado"].append(round(usado[a], 4))
-            serie[a]["comprado_acumulado"].append(round(comprado[a], 4))
-        serie["tick"].append(e["tick"])
-        anterior = e
-    return p, serie, {"usado": usado, "comprado": comprado, "recargas": recargas, "minimo": minimo,
-                      "capacidad": capacidad}
-
-
-def series_combustible(trace: dict, parametros: dict | None = None) -> dict:
-    """Por tick y por agente: nivel del tanque, combustible usado y combustible comprado (acumulados).
-    {"tick": [...], agent_id: {"nivel": [...], "usado_acumulado": [...], "comprado_acumulado": [...]}}"""
-    return _simular_combustible(trace, parametros)[1]
-
-
-def metricas_economicas(trace: dict, parametros: dict | None = None) -> dict:
-    """Métricas de combustible y gasto calculadas desde el log.
-
-    - combustible_usado / combustible_comprado: por agente ({agent_id: litros}) y _total.
-      Comprado = tanque inicial completo + cada recarga hasta lleno al volver a la base.
-    - recargas: cuántas veces se recargó cada agente; combustible_minimo_en_tanque: el nivel más bajo.
-    - combustible_suficiente: False si algún tanque habría quedado por debajo de 0.
-    - costo_combustible = comprado_total x precio_por_litro; valor_grano_entregado = grano en la bodega x
-      valor_por_unidad_de_grano; balance = valor - costo.
-    """
-    p, _, r = _simular_combustible(trace, parametros)
-    entregado = list(reconstruir(trace))[-1]["entregado_total"]
-    usado_total = round(sum(r["usado"].values()), 4)
-    comprado_total = round(sum(r["comprado"].values()), 4)
-    costo = round(comprado_total * p["precio_por_litro"], 4)
-    valor = round(entregado * p["valor_por_unidad_de_grano"], 4)
-    return {
-        "combustible_usado": {a: round(v, 4) for a, v in r["usado"].items()},
-        "combustible_usado_total": usado_total,
-        "combustible_comprado": {a: round(v, 4) for a, v in r["comprado"].items()},
-        "combustible_comprado_total": comprado_total,
-        "recargas": dict(r["recargas"]),
-        "combustible_minimo_en_tanque": {a: round(v, 4) for a, v in r["minimo"].items()},
-        "combustible_suficiente": all(v >= 0 for v in r["minimo"].values()),
-        "costo_combustible": costo,
-        "valor_grano_entregado": valor,
-        "balance": round(valor - costo, 4),
-    }

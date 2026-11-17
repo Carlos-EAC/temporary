@@ -77,11 +77,14 @@ buzon.hay_pendientes(agent_id) -> bool
 buzon.registro() -> list[dict]                # id, tipo, emisor, receptor, tick_envio, tick_entrega, payload
                                               # además imprime cada envío y entrega con logging (§6.3 de la especificación)
 
-# --- Joel: telemetria.py ---
-TraceBuilder(config_dict)
-builder.agregar_tick(tick, registros)         # registros SIN checksum; el builder lo agrega
-builder.construir(mundo, cambios, mensajes, metricas=None) -> dict   # mundo = mundo.descripcion(); cambios = mundo.cambios()
-calcular_metricas(trace) -> dict              # desde el log
+# --- Joel: telemetria.py (estado real; el detalle está en docs/decisiones.md, 2026-11-15) ---
+TraceBuilder(config: dict, mundo: dict, agentes: list[dict])   # mundo = Mundo.descripcion(); agentes = catálogo
+builder.agregar_tick(tick, registros, eventos)  # en TODOS los ticks: registros completos sin checksum;
+                                                # eventos = buzon.drenar_eventos() + mundo.drenar_eventos()
+builder.construir(metricas=None) -> dict        # el trace v2.0
+reconstruir(trace) -> estado completo de cada tick
+calcular_metricas(trace) -> dict / series_temporales(trace) -> dict
+validar_trace(trace) -> list[str]               # errores de formato del trace (vacía si está bien)
 cargar_trace(ruta) / escribir_trace(trace, ruta) / verificar_checksums(trace) -> bool
 
 # --- Carlos: simulacion.py (usa todo lo anterior) ---
@@ -174,24 +177,30 @@ Archivos: `mensajes.py`, `cosechadora.py`, `tests/test_mensajes.py`, `tests/test
 
 ### Joel — Datos (`branch-joel`)
 
-Archivos: `telemetria.py`, `viz/plots.py`, `tools/`, `tests/fixtures/`, `tests/test_telemetria.py`.
+Archivos: `src/harvest_sim/telemetria.py`, `viz/plots.py`, `tools/generar_trace_ejemplo.py`, `tools/validar_trace.py`, `tests/fixtures/`, `tests/test_telemetria.py`, `tests/test_plots.py`, `tests/test_validador.py`, `tests/test_generador.py`.
 
-1. ⚡ **Fixture de ejemplo (viernes noche o sábado temprano).** Un script `tools/generar_trace_ejemplo.py` que genere `tests/fixtures/trace_ejemplo.json`: unos 60 ticks inventados pero coherentes con la especificación (los dos agentes en sus bases, un ciclo completo, mensajes con `id`, checksums bien calculados, y las secciones `mundo` y `cambios`). El script es **determinista (sin aleatoriedad)** y se versionan tanto el script como el JSON que genera. Con esto Giovanni dibuja el visor sin esperar la simulación, y tú desarrollas gráficas y métricas.
-   *Listo cuando:* `verificar_checksums` es `True` sobre el fixture y Giovanni lo puede abrir.
-2. ⚡ **Telemetría: `TraceBuilder`, `escribir_trace` (byte a byte reproducible), `cargar_trace`, `verificar_checksums`.** La telemetría es el registro automático de lo que ocurre en la simulación (el `trace.json`) y las funciones que lo arman, escriben y verifican. Carlos usa `TraceBuilder` en `simulacion.py`.
-   *Listo cuando:* `tests/test_telemetria.py` pasa.
-3. **`calcular_metricas(trace)`** del §6.2, **solo desde el log**. Sugerencias de cálculo:
-   - `tiempo_ocioso_cosechadora`: snapshots con estado `LLENA_ESPERANDO`.
-   - `ticks_bloqueados`: snapshots con `intencion.accion == "ESPERAR_BLOQUEO"`, por agente.
-   - `distancia_*`: ticks en que la pose cambió respecto al tick anterior.
-   - `colisiones`: ticks con la misma celda o con intercambio de posiciones.
-   - `num_ciclos` y `espera_por_ciclo`: a partir de los mensajes `LLENA` y de los tramos de `LLENA_ESPERANDO`.
-   - `tick_fin_cosecha`: `tick_envio` del último `TRANSFERENCIA_TERMINADA`.
-   - `grano_total_entregado`: suma de `cantidad` de los cambios `DEPOSITO`.
-   - `utilizacion_carro`: fracción de ticks con el carro fuera de `EN_BASE`.
-   Cualquier definición que elijas se anota en `docs/decisiones.md`. Pruébalo sobre el fixture, con valores que puedas calcular a mano.
-4. **`viz/plots.py`**: las cuatro gráficas del §7.2, más una tabla resumen (CSV y Markdown) que compare los tres escenarios.
-5. **Cuando llegue la simulación real** (domingo): corre los tres escenarios, revisa que las métricas tengan sentido y prepara los resultados de la entrega.
+**Estado al 16 de noviembre: todo lo de esta entrega está hecho, salvo la tarea 5, que espera la simulación.** El formato del trace (v2.0) y las definiciones de las métricas están en `docs/decisiones.md` (entradas del 15 de noviembre). Ojo: el §6.1 de la especificación todavía describe el formato anterior.
+
+| # | Tarea | Estado |
+|---|---|---|
+| 1 | **Trace v2.0** (`telemetria.py`): `TraceBuilder` (cambios por tick con eventos tipados y checksum por tick), `reconstruir`, `escribir_trace` (byte a byte reproducible), `cargar_trace` y `verificar_checksums` | Hecha |
+| 2 | **Fixture de ejemplo** (`tools/generar_trace_ejemplo.py` → `tests/fixtures/trace_ejemplo.json`, 49 ticks, determinista), más `--escenarios` para tres traces de ejemplo en `runs/ejemplo/` | Hecha |
+| 3 | **Métricas desde el log**: las 13 del §6.2 más una por cada variable en juego (% de ocio, ticks por estado, mensajes por tipo, distancia cosechadora–carro, grano esperado y % entregado) y series por tick | Hecha |
+| 4 | **Gráficas y tabla** (`viz/plots.py`): carga de la cosechadora, línea de tiempo de estados, ocio acumulado, distancia cosechadora–carro, grano cosechado y en la bodega, y comparación entre escenarios; tabla resumen en CSV (todas las métricas) y Markdown (las principales) | Hecha |
+| 5 | **Corridas reales y lectura de resultados** | Pendiente: necesita `simulacion.ejecutar` |
+| 6 | **Validador del contrato del trace** (`tools/validar_trace.py`): estructura, ticks y checksums, eventos, agentes, mundo y mensajes, con el tick, el evento y el campo de cada error | Hecha |
+
+El generador del fixture es una **herramienta de datos de prueba**: aplica las reglas del §5 de forma simplificada para producir traces de ejemplo. No es la simulación ni la reemplaza.
+
+**Lo que el trace necesita de los demás** (contrato en `docs/decisiones.md`):
+- **Carlos:** `Mundo.descripcion()`; `Mundo.drenar_eventos()` con `CELDA_COSECHADA`, `DEPOSITO` (con `entregado_total`) y `BLOQUEO` (vía `registrar_bloqueo`); y en `simulacion.ejecutar`, el tick 0 con el estado inicial antes del primer paso y `agregar_tick` en cada tick.
+- **Emilio:** `Buzon.drenar_eventos()` con `MENSAJE_ENVIADO` y `MENSAJE_ENTREGADO`.
+- **Emilio y Oswaldo:** `registro()` = `tick`, `agent_id`, `tipo`, `pose`, `estado` y `carga` (`{actual, capacidad}`), sin rutas ni intenciones.
+
+**Hecho y retirado de esta entrega** (sigue en el historial de git de `branch-joel`):
+- **Combustible y gasto** (tanque que se recarga en la base, costo del combustible y balance contra el valor del grano): el §1 de la especificación lo deja fuera de esta entrega. Queda para una entrega siguiente. Commit `4c634f4`.
+- **Comparación de una corrida nueva contra la línea base** (`viz/comparar.py`): sirve cuando exista una segunda estrategia que comparar (semana 4). Commit `458e39d`.
+- **Revisión de reglas físicas (R2, R3, R4 y R7) dentro del validador:** pasa a Ilan, en sus pruebas de integración (ver su tarea 2). Commit `d528372`.
 
 **Respaldo:** Giovanni.
 
@@ -217,6 +226,7 @@ Archivos: `tests/test_mundo.py`, `tests/test_config.py`, `tests/test_integracion
    *Listo cuando:* corre en GitHub sobre `development`.
 2. **Tests desde la especificación.** Escritos por quien no implementa el código: `test_mundo.py`, `test_config.py::test_config_invalida` (parametrizado con cada validación del §3) y `test_integracion.py` (R3, R4, R7 en cada tick, terminación, reproducibilidad, duración de estados, mensaje pendiente, `test_cambios_reconstruyen_el_mapa`). Se suben con `skip` y los vas **activando** a medida que cada módulo llega a `development`: un PR pequeño por módulo.
    *Listo cuando:* en `development` no queda ningún `skip` en tus archivos.
+   *Recibido de Joel:* `reconstruir(trace)` (en `telemetria.py`) devuelve el estado completo de cada tick para revisar R2, R3, R4 y R7 desde el log. El validador de Joel solo revisa el formato del trace, así que estas pruebas son la comprobación de esas reglas sobre una corrida completa.
 3. **Scripts.** `scripts/correr_todos.sh` (corre los tres escenarios y las gráficas) y `scripts/verificar_instalacion.sh` (crea un entorno virtual nuevo, instala, corre `pytest` y un escenario).
 4. **Revisión.** Revisas la conformidad con la especificación en los PR grandes y mantienes el formato de `docs/decisiones.md`. Cuando haya conflicto entre lo que dice la especificación y lo que hizo alguien, lo señalas.
 5. **Verificación final (domingo noche y lunes).** `verificar_instalacion.sh` en una máquina o carpeta limpia, README al día, y `docs/autoevaluacion.md` con la lista de verificación de la rúbrica (la del §12 de la especificación más la lista previa a la entrega del documento del curso), marcando lo que falta.

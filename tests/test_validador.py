@@ -258,29 +258,6 @@ def test_ids_de_mensaje_no_crecientes(base):
     assert contiene(errores_de(base, alterar), "repetido")
 
 
-# --- Reglas físicas desde el log -----------------------------------------------------------------
-def test_r2_un_agente_salta_mas_de_una_celda(base):
-    def alterar(t):
-        # en el tick 2 la cosechadora pasa de (2,0) a (2,1); la mandamos a (0,1)
-        _, e = evento(t, "AGENTE", lambda e: e["id"] == H and "pose" in e["set"])
-        e["set"]["pose"]["x"] = 0
-    assert contiene(errores_de(base, alterar), "R2", H, "más de una celda")
-
-
-def test_r3_dos_agentes_en_la_misma_celda(base):
-    def alterar(t):
-        pose_h = tick(t, 0)["cambios"][0]["set"]["pose"]
-        tick(t, 0)["cambios"][1]["set"]["pose"] = copy.deepcopy(pose_h)
-    assert contiene(errores_de(base, alterar), "tick 0", "R3", "misma celda")
-
-
-def test_r7_el_grano_no_se_conserva(base):
-    def alterar(t):
-        _, e = evento(t, "AGENTE", lambda e: e["id"] == H and e["set"].get("carga", 0) > 0)
-        e["set"]["carga"] -= 1
-    assert contiene(errores_de(base, alterar), "R7")
-
-
 # --- Línea de comandos ---------------------------------------------------------------------------
 def test_cli_ok_y_errores(tmp_path, capsys, base):
     cli = cargar_modulo("validar_trace", RAIZ / "tools" / "validar_trace.py")
