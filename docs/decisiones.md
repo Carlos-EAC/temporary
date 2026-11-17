@@ -60,3 +60,54 @@ Formato por entrada:
 - **Alternativa considerada:** promedio del ocioso por ciclo o entre corridas; distancia solo por ciclo, en el momento del aviso `LLENA`; calcular las métricas dentro de la simulación; contar pares de colisión; contar solo los ticks que aparecen en el archivo.
 - **Por qué se descartó:** se prefiere ver el ocioso acumulado en el tiempo (la curva muestra el total hasta cada tick) y la distancia por tick; las métricas deben poder recalcularse desde el log para ser verificables; los ticks omitidos también cuentan.
 - **Afecta a:** Joel (`calcular_metricas`, `series_temporales`); el resto del equipo solo las lee del `trace.json` (clave `metricas`).
+
+## 2026-11-16 — Formato del trace 2.1: obstáculos, clases de la ontología y performativa (solo agrega campos a la 2.0)
+- **Estado:** DECIDIDO.
+- **Quién:** Joel (Datos)
+- **Decisión:**
+  1. `mundo.obstaculos`: lista ordenada de celdas `[x, y]` con obstáculo, ya expandida (vacía en esta entrega). La genera `Mundo.descripcion()`.
+  2. Clases de la ontología del curso ([docs/ontologia.md](ontologia.md)): `meta.clase = "AccountabilityRecord"`, `agentes[].clase = "AutonomousAgriculturalRobot"` (el `tipo` sigue siendo el rol) y `mundo.clase_celdas = "SemanticMapCell"`. Las pone `TraceBuilder`: nadie las escribe a mano.
+  3. `MENSAJE_ENVIADO.performativa`: el acto comunicativo (KQML / FIPA-ACL). `LLENA` → `request`, `TRANSFERENCIA_TERMINADA` → `inform`. La pone el `Buzon` con `datos.formato.PERFORMATIVAS`.
+  4. El archivo se escribe con el primer nivel indentado (coordenadas en una línea) y **cada tick en una sola línea**: pesa la mitad y sigue siendo reproducible byte a byte.
+  5. El validador acepta cualquier `tipo` de agente (texto no vacío), recibe `retraso_maximo` (default 1) para la entrega de mensajes y devuelve avisos, aparte de los errores, para estados que no están en el vocabulario.
+- **Alternativa considerada:** dejar la ontología solo en el reporte; deducir la performativa en Datos; mantener `indent=2` en todo el archivo.
+- **Por qué se descartó:** la rúbrica del curso pide las clases «en el diseño y en los logs»; la performativa es una decisión de quien envía el mensaje, no algo que el log deba adivinar; con `indent=2` cada coordenada ocupa 4 líneas (1,46 MB contra 0,73 MB en un campo de 640 celdas).
+- **Afecta a:** Carlos (`descripcion()` con `obstaculos`), Emilio (`performativa` en el `Buzon`), Giovanni (visor: dibujar obstáculos), Ilan (pruebas), Joel (formato, validador, generador).
+
+## 2026-11-16 — Métricas para cualquier número de agentes: promedio por defecto y detalle por agente
+- **Estado:** DECIDIDO.
+- **Quién:** Joel (Datos)
+- **Decisión:**
+  1. Magnitudes de cada agente (tiempo ocioso, % ocioso, tiempo transfiriendo, distancia recorrida, utilización del carro): el nivel superior de `metricas` lleva el **promedio entre los agentes de ese tipo**; el detalle de cada agente va en `metricas["por_agente"][agent_id]` (incluye `ticks_por_estado` y `espera_por_ciclo`).
+  2. Magnitudes del sistema (completación, fin de la cosecha, distancia total, bloqueos, colisiones, ciclos, mensajes, grano): un solo valor total. `ticks_bloqueados` pasa de diccionario por agente a total (el detalle está en `por_agente`).
+  3. `espera_promedio_por_ciclo` reemplaza a la lista `espera_por_ciclo` del nivel superior (la lista queda por agente).
+  4. Distancia cosechadora–carro: para cada cosechadora, en cada tick, la distancia Manhattan al **carro más cercano**; promedio, mínima y máxima sobre todas las cosechadoras y ticks.
+  5. Un promedio que da entero se guarda como entero (`23`, no `23.0`); los demás, con 4 decimales.
+  6. Series por tick: ocio acumulado y distancia al carro, promedio por cosechadora; grano cosechado, en tránsito (suma de cargas) y en la bodega; bloqueos; y `por_agente` con las series de cada uno.
+  7. Rendimiento: métricas, series y gráficas leen de una sola pasada por el trace (`linea_de_tiempo`), sin copiar el estado en cada tick (de 2,34 s a 0,009 s en un campo de 640 celdas).
+- **Alternativa considerada:** sumar entre agentes; tomar el primer agente de cada tipo (lo que hacía la versión anterior); distancia al primer carro.
+- **Por qué se descartó:** la suma crece con el número de agentes y no permite comparar escenarios con distinta flota; el primer agente ignora a los demás; con varios carros, el relevante es el más cercano.
+- **Afecta a:** Joel (métricas, gráficas, tabla); el resto lee `metricas` del trace.
+
+## 2026-11-16 — Campo, obstáculos y grano esperado: una sola fórmula
+- **Estado:** DECIDIDO.
+- **Quién:** Joel (Datos), con Carlos (Mundo) como usuario
+- **Decisión:**
+  1. Fórmula única (`harvest_sim/datos/campo.py`): `celdas_de_campo(mundo)` = celdas con `0 ≤ x < ancho` y `1 ≤ y < alto`, menos los obstáculos; `grano_esperado(mundo)` = celdas de campo × `grano_por_celda`. La usan las métricas, las gráficas, el validador, `Mundo.grano_total` y las pruebas de integración.
+  2. Sección nueva de la configuración: `"obstaculos": {"celdas": [[x, y], ...], "regiones": [{"inicio": [x, y], "tamano": [ancho, alto]}, ...]}`, vacía en los tres escenarios.
+  3. `expandir_obstaculos(seccion, ancho, alto)` valida y expande: enteros; dentro del mapa (regiones completas); tamaño ≥ 1; nada en la fila 0 (servicio); todo el campo libre alcanzable desde la bodega. Devuelve la lista ordenada para `mundo.obstaculos`.
+  4. En esta entrega la simulación **no** recorre obstáculos: `cargar_config` los valida y, si la lista no está vacía, falla con «obstáculos aún no soportados» (igual que `num_carros` ≠ 1). El generador de ejemplo también los rechaza.
+- **Alternativa considerada:** que cada configuración declare su total esperado; escribir la fórmula en cada módulo; soportar obstáculos ya en la serpentina y en las rutas.
+- **Por qué se descartó:** un total escrito a mano se desincroniza del mapa; la fórmula repetida estaba en dos lugares y no consideraba obstáculos; recorrerlos exige cambiar la serpentina y las rutas, que no cabe antes del martes (el §1 de la especificación los deja fuera).
+- **Afecta a:** Carlos (`config.py`, `Mundo`, JSON de escenarios), Ilan (`test_config.py`), Joel.
+
+## 2026-11-16 — Gráficas finales y experimentos
+- **Estado:** DECIDIDO.
+- **Quién:** Joel (Datos)
+- **Decisión:**
+  1. Por corrida, 6 gráficas, cada una responde una pregunta distinta: línea de tiempo de estados, ocio acumulado, distancia al carro más cercano, **flujo del grano** (en la bodega + en tránsito = cosechado, contra el esperado; reemplaza a «carga de la cosechadora» y a «grano cosechado y en la bodega», que repetían datos), mapa de calor de la espera y mapa de calor del tráfico. Con varios agentes muestran promedios; `--agente <id>` muestra una cosechadora.
+  2. Comparación entre escenarios con 6 indicadores: completación, ocio por cosechadora, distancia total, distancia media cosechadora–carro, utilización del carro y bloqueos. Salen «fin de la cosecha» (casi igual a la completación), «% ocioso» (la misma cifra normalizada) y «% entregado» (siempre 100 en una corrida completa); los tres siguen en la tabla.
+  3. Ejecutor de experimentos (`tools/correr_experimento.py`, JSON en `config/experimentos/`): escenarios × barrido de parámetros × repeticiones (seed + r), con resultados por corrida, resumen con media, desviación estándar e IC 95 % (t de Student) y gráfica de sensibilidad. Con la simulación determinista, el resumen indica «sin variación».
+- **Alternativa considerada:** conservar las 5 gráficas y los 8 paneles anteriores; correr los experimentos a mano.
+- **Por qué se descartó:** había pares de gráficas y paneles con la misma información; la rúbrica nueva pide variar parámetros, repetir corridas y recomienda mapas de calor.
+- **Afecta a:** Joel; Giovanni (el dashboard usa estas imágenes); Ilan (`scripts/correr_todos.sh`).
