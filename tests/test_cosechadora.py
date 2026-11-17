@@ -1,11 +1,11 @@
-"""Máquina de estados de la cosechadora (§5.1).  [Dueño: Mario]
+"""Máquina de estados de la cosechadora (§5.1).  [Dueño: Emilio]
 
 Usa un Mundo y un Buzon falsos (clases mínimas en el propio test) para no depender de los demás.
 """
 
 import pytest
 
-pendiente = pytest.mark.skip(reason="pendiente — Mario")
+pendiente = pytest.mark.skip(reason="pendiente — Emilio")
 
 
 @pendiente
